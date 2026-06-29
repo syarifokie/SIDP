@@ -1,5 +1,5 @@
 camera:
-  source: "Test2.mp4" # 0 = webcam | "video.mp4" = file
+  source: "Test.mp4" # 0 = webcam | "video.mp4" = file
   infer_size: [640, 480]
   process_every_n: 2 # 1 = every frame (RTX 5060), 2 = every other
   mjpeg_quality: 80
