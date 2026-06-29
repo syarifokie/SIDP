@@ -1,49 +1,70 @@
-📌 SIDP Project
-🚀 Overview
+# SIDP Laboratory Safety Monitoring
 
-This project processes video input (webcam or video file) and runs inference using a configurable system.
+A computer-vision-based laboratory safety monitoring system built with YOLO, OpenCV, Flask, and local speech alerts.
 
-⚙️ Setup Instructions
-1. Clone the Repository
-git clone <your-repo-link>
-cd SIDP
-2. Create Virtual Environment (Recommended)
-python -m venv venv
+## Prerequisites
 
-Activate it:
+- Python 3.11 or newer
+- Windows environment (required for `pyttsx3` and `pywin32` support)
+- `git` if cloning the repository from a remote source
 
-Windows:
-venv\Scripts\activate
-Mac/Linux:
-source venv/bin/activate
-3. Install Requirements
-pip install -r requirements.txt
-⚙️ Configuration
+## Setup
 
-Before running the program, edit the configuration file:
+1. Open PowerShell and navigate to the project folder:
 
-📄 default.yaml
+```powershell
+cd "c:\Users\Syarif Alan Taslim\SIDP\SIDP"
+```
 
-📌 Camera Settings
-camera:
-  source: "Test2.mp4"   # 0 = webcam | "video.mp4" = video file
-  infer_size: [640, 480]
-  process_every_n: 2    # 1 = every frame, 2 = every 2 frames
-  mjpeg_quality: 80
-🎯 Explanation
-source
-0 → use webcam
-"video.mp4" → use video file
-infer_size
-Resize input frame for faster processing
-process_every_n
-Controls performance vs accuracy
-1 = process every frame (high accuracy, slower)
-2 = process every 2 frames (faster)
-mjpeg_quality
-Output video stream quality (higher = better, slower)
-▶️ Run the Project
+2. Create a Python virtual environment:
 
-After setup and configuration:
+```powershell
+python -m venv .venv
+```
 
+3. Activate the virtual environment:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+4. Install Python dependencies:
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+## Run the application
+
+From the project root, start the system with:
+
+```powershell
 python main.py
+```
+
+Once the server is running, open the browser at the local dashboard URL shown in the terminal, for example:
+
+```text
+http://localhost:5000
+```
+
+## What this project does
+
+- `main.py` is the application entrypoint and starts the Flask dashboard.
+- `plugins/` contains the active safety detection modules.
+- `configs/default.yaml` holds camera, server, and plugin settings.
+- `model/` contains YOLO model weight files used for detection.
+- `data/` stores generated log files.
+
+## Notes
+
+- The application uses `configs/default.yaml` to control enabled plugins and camera source.
+- The project launches a web dashboard rather than showing an OpenCV window.
+- If your camera source is invalid, update `configs/default.yaml`.
+
+## Troubleshooting
+
+- If `python` is not recognized, install Python and add it to your PATH.
+- If dependency installation fails, confirm the virtual environment is activated.
+- If the dashboard does not appear, verify the local URL and check the terminal for errors.
