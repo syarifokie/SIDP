@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SIDP — Lab Safety Dashboard</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #0a1228;
+        color: #fff;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* ── TOP BAR ── */
+      .topbar {
+        background: #060e1f;
+        border-bottom: 1px solid #1e3a6a;
+        padding: 0 16px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-shrink: 0;
+      }
+      .tb-brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tb-logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #1a3a6a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .tb-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+      }
+      .tb-block {
+        color: #f0c040;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 4px;
+      }
+
+      .tb-sep {
+        flex: 1;
+      }
+      .tb-clock {
+        color: #f0c040;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      /* Use-case checkboxes */
+      .tb-ucs {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .uc-check {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        cursor: pointer;
+        font-size: 12px;
+        color: #aab;
+        user-select: none;
+      }
+      .uc-check input {
+        display: none;
+      }
+      .uc-chip {
+        padding: 3px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1.5px solid #2a4a7a;
+        background: #1a2a4a;
+        color: #8899bb;
+        transition: all 0.2s;
+      }
+      .uc-check input:checked ~ .uc-chip {
+        background: #27ae60;
+        border-color: #27ae60;
+        color: #fff;
+      }
+
+      /* Action buttons */
+      .tb-btn {
+        padding: 5px 14px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1.5px solid;
+        transition: all 0.15s;
+        letter-spacing: 0.03em;
+      }
+      .btn-sim {
+        border-color: #f39c12;
+        color: #f39c12;
+        background: transparent;
+      }
+      .btn-sim:hover {
+        background: #f39c12;
+        color: #000;
+      }
+      .btn-sil {
+        border-color: #e74c3c;
+        color: #e74c3c;
+        background: transparent;
+      }
+      .btn-sil:hover {
+        background: #e74c3c;
+        color: #fff;
+      }
+
+      /* ── MAIN LAYOUT ── */
+      .main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+      }
+
+      /* ── SIDEBAR ── */
+      .sidebar {
+        width: 158px;
+        background: #060e1f;
+        border-right: 1px solid #1e3a6a;
+        padding: 14px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        flex-shrink: 0;
+      }
+      .s-label {
+        font-size: 10px;
+        color: #8899bb;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        margin-bottom: 4px;
+      }
+      .s-badge {
+        border-radius: 8px;
+        padding: 9px 0;
+        text-align: center;
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        background: #2a3a5c;
+        color: #aab;
+        transition: all 0.3s;
+      }
+      .s-badge.SAFE {
+        background: #27ae60;
+        color: #fff;
+      }
+      .s-badge.WARNING {
+        background: #e67e22;
+        color: #fff;
+      }
+      .s-badge.UNSAFE {
+        background: #e74c3c;
+        color: #fff;
+      }
+
+      .s-pills {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .s-pill {
+        border-radius: 20px;
+        padding: 5px 10px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1px solid #2a4a7a;
+        background: #1a2a4a;
+        color: #8899bb;
+        transition: all 0.3s;
+      }
+      .s-pill.active {
+        background: #27ae60;
+        border-color: #27ae60;
+        color: #fff;
+      }
+      .s-pill.inactive {
+        background: #333;
+        border-color: #444;
+        color: #666;
+      }
+
+      .s-missing {
+        font-size: 11px;
+        line-height: 1.8;
+        color: #e74c3c;
+        min-height: 20px;
+      }
+
+      /* ── VIDEO CENTER ── */
+      .video-center {
+        flex: 1;
+        background: #000;
+        display: flex;
+        align-items: stretch;
+      }
+      .video-center img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      /* ── RIGHT PANEL ── */
+      .right {
+        width: 288px;
+        background: #060e1f;
+        border-left: 1px solid #1e3a6a;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+      }
+
+      /* Summary cards */
+      .cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 12px;
+      }
+      .card {
+        background: #0f1b35;
+        border: 1px solid #1e3a6a;
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+      .card .num {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .card .lbl {
+        font-size: 10px;
+        color: #8899bb;
+        margin-top: 2px;
+      }
+      .c-gray {
+        color: #aaa;
+      }
+      .c-green {
+        color: #2ecc71;
+      }
+      .c-amber {
+        color: #f39c12;
+      }
+      .c-red {
+        color: #e74c3c;
+      }
+
+      /* Log filter */
+      .log-filter {
+        padding: 6px 12px;
+        border-top: 1px solid #1e3a6a;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .lf-label {
+        font-size: 10px;
+        color: #8899bb;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+      }
+      .lf-check {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        color: #aab;
+      }
+      .lf-check input {
+        accent-color: #27ae60;
+      }
+
+      /* Log section */
+      .log-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 12px;
+        border-top: 1px solid #1e3a6a;
+      }
+      .log-title {
+        font-size: 10px;
+        color: #8899bb;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+      }
+      .btn-clear {
+        font-size: 10px;
+        padding: 3px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 1px solid #e74c3c;
+        color: #e74c3c;
+        background: transparent;
+      }
+      .btn-clear:hover {
+        background: #e74c3c;
+        color: #fff;
+      }
+
+      .log-wrap {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 8px 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      th {
+        color: #8899bb;
+        text-align: left;
+        padding: 5px 6px;
+        border-bottom: 1px solid #1e3a6a;
+        font-weight: 600;
+        position: sticky;
+        top: 0;
+        background: #060e1f;
+      }
+      td {
+        padding: 5px 6px;
+        border-bottom: 1px solid #0d1a32;
+        vertical-align: top;
+      }
+      .badge {
+        padding: 1px 7px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: 700;
+      }
+      .COMPLIANT {
+        background: #0e3020;
+        color: #2ecc71;
+      }
+      .WARNING {
+        background: #3a2005;
+        color: #f39c12;
+      }
+      .ALERT {
+        background: #3a0505;
+        color: #e74c3c;
+      }
+      .IDLE {
+        background: #1a2030;
+        color: #8899bb;
+      }
+
+      .log-wrap::-webkit-scrollbar {
+        width: 4px;
+      }
+      .log-wrap::-webkit-scrollbar-track {
+        background: #060e1f;
+      }
+      .log-wrap::-webkit-scrollbar-thumb {
+        background: #1e3a6a;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── TOP BAR ── -->
+    <div class="topbar">
+      <div class="tb-brand">
+        <div class="tb-logo">L</div>
+        <span class="tb-title">LAB SAFETY MONITORING</span>
+        <span class="tb-block">BLOCK 21-02-03</span>
+      </div>
+
+      <div class="tb-ucs">
+        <label class="uc-check">
+          <input
+            type="checkbox"
+            id="uc-ppe"
+            checked
+            onchange="toggleUC('ppe', this.checked)"
+          />
+          <span class="uc-chip">PPE</span>
+        </label>
+        <label class="uc-check">
+          <input
+            type="checkbox"
+            id="uc-occupancy"
+            checked
+            onchange="toggleUC('occupancy', this.checked)"
+          />
+          <span class="uc-chip">Occupancy</span>
+        </label>
+        <label class="uc-check">
+          <input
+            type="checkbox"
+            id="uc-no_phone"
+            checked
+            onchange="toggleUC('no_phone', this.checked)"
+          />
+          <span class="uc-chip">No Phone</span>
+        </label>
+      </div>
+
+      <button class="tb-btn btn-sim" onclick="simulate()">
+        Simulate Violation
+      </button>
+      <button class="tb-btn btn-sil" onclick="silence()">Silence Alarm</button>
+
+      <div class="tb-sep"></div>
+      <span class="tb-clock" id="clock">—</span>
+    </div>
+
+    <!-- ── MAIN ── -->
+    <div class="main">
+      <!-- Sidebar -->
+      <div class="sidebar">
+        <div>
+          <div class="s-label">STATUS</div>
+          <div class="s-badge" id="s-badge">IDLE</div>
+        </div>
+        <div>
+          <div class="s-label">ACTIVE DETECTION</div>
+          <div class="s-pills">
+            <div class="s-pill" id="pill-ppe">PPE</div>
+            <div class="s-pill" id="pill-occupancy">occupancy</div>
+            <div class="s-pill" id="pill-no_phone">no-phone</div>
+          </div>
+        </div>
+        <div>
+          <div class="s-label">MISSING ITEMS</div>
+          <div class="s-missing" id="missing-list">—</div>
+        </div>
+      </div>
+
+      <!-- Video -->
+      <div class="video-center">
+        <img src="/video" alt="Live camera feed" />
+      </div>
+
+      <!-- Right panel -->
+      <div class="right">
+        <!-- Summary cards -->
+        <div class="cards">
+          <div class="card">
+            <div class="num c-gray" id="c-total">0</div>
+            <div class="lbl">Total events</div>
+          </div>
+          <div class="card">
+            <div class="num c-green" id="c-comp">0</div>
+            <div class="lbl">Compliant</div>
+          </div>
+          <div class="card">
+            <div class="num c-amber" id="c-warn">0</div>
+            <div class="lbl">Warnings</div>
+          </div>
+          <div class="card">
+            <div class="num c-red" id="c-alert">0</div>
+            <div class="lbl">Alerts</div>
+          </div>
+        </div>
+
+        <!-- Log filter checkboxes (FR14) -->
+        <div class="log-filter">
+          <span class="lf-label">FILTER LOG:</span>
+          <label class="lf-check"
+            ><input
+              type="checkbox"
+              value="ppe"
+              checked
+              onchange="refreshData()"
+            />
+            PPE</label
+          >
+          <label class="lf-check"
+            ><input
+              type="checkbox"
+              value="occupancy"
+              checked
+              onchange="refreshData()"
+            />
+            Occupancy</label
+          >
+          <label class="lf-check"
+            ><input
+              type="checkbox"
+              value="no_phone"
+              checked
+              onchange="refreshData()"
+            />
+            No Phone</label
+          >
+        </div>
+
+        <!-- Log header + clear -->
+        <div class="log-header">
+          <span class="log-title">RECENT EVENTS</span>
+          <button class="btn-clear" onclick="clearLog()">Clear log</button>
+        </div>
+
+        <!-- Event table -->
+        <div class="log-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Use case</th>
+                <th>Status</th>
+                <th>Missing</th>
+              </tr>
+            </thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ── Clock ──────────────────────────────────────────────────────
+      function tick() {
+        const n = new Date();
+        document.getElementById("clock").textContent =
+          n.toLocaleDateString("en-GB") +
+          "  " +
+          n.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      }
+      tick();
+      setInterval(tick, 1000);
+
+      // ── Status colours ─────────────────────────────────────────────
+      const SC = {
+        COMPLIANT: { cls: "SAFE", label: "SAFE" },
+        WARNING: { cls: "WARNING", label: "WARNING" },
+        ALERT: { cls: "UNSAFE", label: "UNSAFE" },
+        IDLE: { cls: "", label: "IDLE" },
+      };
+
+      // ── Poll live status every second ──────────────────────────────
+      function pollStatus() {
+        fetch("/api/status")
+          .then((r) => r.json())
+          .then((d) => {
+            const active = d.active || [];
+            const states = d.states || {};
+
+            // Update pills
+            ["ppe", "occupancy", "no_phone"].forEach((uc) => {
+              const pill = document.getElementById("pill-" + uc);
+              if (!pill) return;
+              pill.className =
+                "s-pill " + (active.includes(uc) ? "active" : "inactive");
+            });
+
+            // Primary status = first active use case
+            const primary = active[0];
+            const ps = primary ? states[primary] || {} : {};
+            const status = ps.status || "IDLE";
+            const sc = SC[status] || SC.IDLE;
+
+            const badge = document.getElementById("s-badge");
+            badge.textContent = sc.label;
+            badge.className = "s-badge " + sc.cls;
+
+            const ml = document.getElementById("missing-list");
+            ml.textContent =
+              ps.missing && ps.missing.length ? ps.missing.join(", ") : "—";
+          });
+      }
+
+      // ── Poll summary + log every 3s ────────────────────────────────
+      function getSelectedUCs() {
+        return [...document.querySelectorAll(".log-filter input:checked")].map(
+          (el) => el.value,
+        );
+      }
+
+      function refreshData() {
+        const ucs = getSelectedUCs();
+        const q = ucs.map((u) => "uc=" + u).join("&");
+
+        fetch("/api/summary?" + q)
+          .then((r) => r.json())
+          .then((d) => {
+            document.getElementById("c-total").textContent = d.total || 0;
+            document.getElementById("c-comp").textContent = d.compliant || 0;
+            document.getElementById("c-warn").textContent = d.warning || 0;
+            document.getElementById("c-alert").textContent = d.alert || 0;
+          });
+
+        fetch("/api/events?" + q)
+          .then((r) => r.json())
+          .then((rows) => {
+            document.getElementById("log-body").innerHTML = rows
+              .map(
+                (r) => `
+        <tr>
+          <td>${r.timestamp.slice(11, 19)}</td>
+          <td style="color:#8899bb">${r.use_case}</td>
+          <td><span class="badge ${r.status}">${r.status}</span></td>
+          <td style="color:#e74c3c;font-size:10px">${r.missing || "—"}</td>
+        </tr>`,
+              )
+              .join("");
+          });
+      }
+
+      // ── Use-case toggle (FR3) ──────────────────────────────────────
+      function toggleUC(name, active) {
+        fetch("/api/activate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, active }),
+        });
+      }
+
+      // ── Simulate violation (FR11) ──────────────────────────────────
+      function simulate() {
+        fetch("/api/simulate", { method: "POST" });
+      }
+
+      // ── Silence alarm (FR10) ──────────────────────────────────────
+      function silence() {
+        fetch("/api/silence", { method: "POST" });
+      }
+
+      // ── Clear log (FR15) ──────────────────────────────────────────
+      function clearLog() {
+        const ucs = getSelectedUCs();
+        if (!confirm(`Clear log for: ${ucs.join(", ")}?`)) return;
+        fetch("/api/clear_log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ use_cases: ucs }),
+        }).then(() => refreshData());
+      }
+
+      // ── Start polling ──────────────────────────────────────────────
+      pollStatus();
+      setInterval(pollStatus, 1000);
+      refreshData();
+      setInterval(refreshData, 3000);
+    </script>
+  </body>
+</html>
