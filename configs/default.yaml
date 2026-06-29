@@ -1,0 +1,48 @@
+camera:
+  source: "Test2.mp4" # 0 = webcam | "video.mp4" = file
+  infer_size: [640, 480]
+  process_every_n: 2 # 1 = every frame (RTX 5060), 2 = every other
+  mjpeg_quality: 80
+
+use_cases:
+  ppe:
+    enabled: true
+    model_path: model/ppe.pt
+    person_model_path: model/yolov8s.pt
+    conf_threshold: 0.10
+    person_conf_threshold: 0.50
+    grace_period: 3.0
+    required_items:
+      - Gloves
+      - Vest
+      - goggles
+      - mask
+    labels:
+      Gloves: Gloves
+      Vest: Vest
+      goggles: Goggles
+      helmet: Helmet
+      mask: Face Mask
+      safety_shoe: Safety Shoes
+
+  occupancy:
+    enabled: true
+    model_path: model/yolo26n.pt
+    conf_threshold: 0.40
+    max_occupancy: 5
+    grace_period: 3.0
+
+  no_phone:
+    enabled: true
+    model_path: model/yolo26n.pt
+    conf_threshold: 0.40
+    grace_period: 3.0
+    phone_classes:
+      - cell phone
+
+server:
+  host: 0.0.0.0
+  port: 5000
+
+database:
+  path: data/sidp.db
