@@ -1,1 +1,4 @@
 # SIDP
+
+python main.py
+
