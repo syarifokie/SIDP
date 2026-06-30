@@ -160,62 +160,56 @@
         letter-spacing: 0.07em;
         margin-bottom: 4px;
       }
-      .s-badge {
+      /* Per-use-case status cards (replaces single shared badge) */
+      .uc-card {
+        background: #0f1b35;
+        border: 1px solid #1e3a6a;
         border-radius: 8px;
-        padding: 9px 0;
+        padding: 10px;
+        margin-bottom: 10px;
+        transition: opacity 0.2s;
+      }
+      .uc-card.inactive {
+        opacity: 0.35;
+      }
+      .uc-card-title {
+        font-size: 10px;
+        color: #8899bb;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+      }
+      .uc-card-badge {
+        border-radius: 6px;
+        padding: 6px 0;
         text-align: center;
-        font-size: 15px;
+        font-size: 13px;
         font-weight: 800;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.03em;
         background: #2a3a5c;
         color: #aab;
-        transition: all 0.3s;
+        margin-bottom: 6px;
       }
-      .s-badge.SAFE {
+      .uc-card-badge.SAFE {
         background: #27ae60;
         color: #fff;
       }
-      .s-badge.WARNING {
+      .uc-card-badge.WARNING {
         background: #e67e22;
         color: #fff;
       }
-      .s-badge.UNSAFE {
+      .uc-card-badge.UNSAFE {
         background: #e74c3c;
         color: #fff;
       }
-
-      .s-pills {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-      }
-      .s-pill {
-        border-radius: 20px;
-        padding: 5px 10px;
-        text-align: center;
-        font-size: 11px;
-        font-weight: 600;
-        border: 1px solid #2a4a7a;
-        background: #1a2a4a;
-        color: #8899bb;
-        transition: all 0.3s;
-      }
-      .s-pill.active {
-        background: #27ae60;
-        border-color: #27ae60;
-        color: #fff;
-      }
-      .s-pill.inactive {
-        background: #333;
-        border-color: #444;
-        color: #666;
-      }
-
-      .s-missing {
-        font-size: 11px;
-        line-height: 1.8;
+      .uc-card-missing {
+        font-size: 10px;
         color: #e74c3c;
-        min-height: 20px;
+        line-height: 1.6;
+      }
+      .uc-card-missing.none {
+        color: #2ecc71;
       }
 
       /* ── VIDEO CENTER ── */
@@ -443,21 +437,9 @@
     <div class="main">
       <!-- Sidebar -->
       <div class="sidebar">
-        <div>
-          <div class="s-label">STATUS</div>
-          <div class="s-badge" id="s-badge">IDLE</div>
-        </div>
-        <div>
-          <div class="s-label">ACTIVE DETECTION</div>
-          <div class="s-pills">
-            <div class="s-pill" id="pill-ppe">PPE</div>
-            <div class="s-pill" id="pill-occupancy">occupancy</div>
-            <div class="s-pill" id="pill-no_phone">no-phone</div>
-          </div>
-        </div>
-        <div>
-          <div class="s-label">MISSING ITEMS</div>
-          <div class="s-missing" id="missing-list">—</div>
+        <div class="s-label" style="margin-bottom: 8px">USE CASE STATUS</div>
+        <div id="uc-cards">
+          <!-- Cards injected by JS — one per use case, always 3 shown -->
         </div>
       </div>
 
@@ -563,7 +545,15 @@
         IDLE: { cls: "", label: "IDLE" },
       };
 
-      // ── Poll live status every second ──────────────────────────────
+      // ── Use case display names ─────────────────────────────────────
+      const UC_LABELS = {
+        ppe: "PPE",
+        occupancy: "Occupancy",
+        no_phone: "No Phone",
+      };
+      const UC_ORDER = ["ppe", "occupancy", "no_phone"];
+
+      // ── Poll live status every second — renders ALL 3 use cases independently ──
       function pollStatus() {
         fetch("/api/status")
           .then((r) => r.json())
@@ -571,27 +561,27 @@
             const active = d.active || [];
             const states = d.states || {};
 
-            // Update pills
-            ["ppe", "occupancy", "no_phone"].forEach((uc) => {
-              const pill = document.getElementById("pill-" + uc);
-              if (!pill) return;
-              pill.className =
-                "s-pill " + (active.includes(uc) ? "active" : "inactive");
-            });
+            const html = UC_ORDER.map((uc) => {
+              const isActive = active.includes(uc);
+              const st = states[uc] || {};
+              const status = isActive ? st.status || "IDLE" : "IDLE";
+              const sc = SC[status] || SC.IDLE;
+              const missing =
+                isActive && st.missing && st.missing.length
+                  ? st.missing.join(", ")
+                  : null;
 
-            // Primary status = first active use case
-            const primary = active[0];
-            const ps = primary ? states[primary] || {} : {};
-            const status = ps.status || "IDLE";
-            const sc = SC[status] || SC.IDLE;
+              return `
+          <div class="uc-card ${isActive ? "" : "inactive"}">
+            <div class="uc-card-title">${UC_LABELS[uc]}</div>
+            <div class="uc-card-badge ${sc.cls}">${isActive ? sc.label : "NOT ACTIVE"}</div>
+            <div class="uc-card-missing ${missing ? "" : "none"}">
+              ${isActive ? missing || "No issues" : "—"}
+            </div>
+          </div>`;
+            }).join("");
 
-            const badge = document.getElementById("s-badge");
-            badge.textContent = sc.label;
-            badge.className = "s-badge " + sc.cls;
-
-            const ml = document.getElementById("missing-list");
-            ml.textContent =
-              ps.missing && ps.missing.length ? ps.missing.join(", ") : "—";
+            document.getElementById("uc-cards").innerHTML = html;
           });
       }
 
