@@ -9,6 +9,7 @@ import threading
 import importlib
 import yaml
 import pyttsx3
+from datetime import datetime
 
 from flask import Flask, Response, jsonify, render_template, request
 import database as db
@@ -21,15 +22,17 @@ with open("configs/default.yaml", "r") as f:
 
 db.init_db(CFG["database"]["path"])
 
+SOURCE  = CFG["camera"]["source"]
+IS_LIVE = isinstance(SOURCE, int)
+
 # =====================================================================
 # PLUGIN LOADER
 # =====================================================================
-_plugins     = {}   # { use_case_name: module }
-_uc_states   = {}   # { use_case_name: state_dict }
-_active_ucs  = set()
+_plugins    = {}
+_uc_states  = {}
+_active_ucs = set()
 
 def load_plugin(name):
-    """Import plugins/<name>.py, call init(), store fresh state."""
     if name in _plugins:
         return
     try:
@@ -41,7 +44,6 @@ def load_plugin(name):
     except Exception as e:
         print(f"[Loader] ERROR loading plugin '{name}': {e}")
 
-# Pre-load all enabled use cases
 for uc_name, uc_cfg in CFG["use_cases"].items():
     if uc_cfg.get("enabled", False):
         load_plugin(uc_name)
@@ -50,15 +52,23 @@ for uc_name, uc_cfg in CFG["use_cases"].items():
 # =====================================================================
 # SHARED STATE
 # =====================================================================
-_latest_frame  = None
-_frame_lock    = threading.Lock()
-_alarm_active  = False
-_simulating    = False
-_sim_end_time  = 0
-_frame_counter = 0
+_latest_frame   = None   # final display frame → MJPEG
+_frame_lock     = threading.Lock()
+
+_raw_frame      = None   # latest raw frame from camera
+_raw_lock       = threading.Lock()
+
+_inferred_frame = None   # latest frame with boxes drawn
+_infer_lock     = threading.Lock()
+
+_alarm_active   = False
+_simulating     = False
+_sim_end_time   = 0
+_frame_counter  = 0
+_use_person     = True   # alternates per frame for model switching
 
 # =====================================================================
-# ALARM (pyttsx3 background thread)
+# ALARM
 # =====================================================================
 def _alarm_loop():
     while _alarm_active:
@@ -82,37 +92,10 @@ def _stop_alarm():
     _alarm_active = False
 
 # =====================================================================
-# PREPROCESSING
-# =====================================================================
-def preprocess(cap):
-    global _frame_counter
-    source = CFG["camera"]["source"]
-    is_live = isinstance(source, int)
-
-    if is_live:
-        for _ in range(3):
-            cap.grab()
-        ret, frame = cap.retrieve()
-    else:
-        ret, frame = cap.read()
-
-    if not ret or frame is None:
-        return None, None, False
-
-    _frame_counter += 1
-    run = (_frame_counter % CFG["camera"]["process_every_n"] == 0)
-
-    if run:
-        w, h = CFG["camera"]["infer_size"]
-        return cv2.resize(frame, (w, h)), frame, True
-    return None, frame, False
-
-# =====================================================================
-# PROCESSING  — runs all active plugins
+# PROCESSING — runs all active plugins
 # =====================================================================
 def process(infer_frame, display_frame):
     global _simulating, _sim_end_time
-
     any_alert = False
 
     for name in list(_active_ucs):
@@ -122,7 +105,9 @@ def process(infer_frame, display_frame):
             continue
         try:
             display_frame, new_state = plugin.process_frame(
-                display_frame, infer_frame, state
+                display_frame,
+                infer_frame,
+                state
             )
             _uc_states[name] = new_state
             if new_state["status"] == "ALERT":
@@ -149,54 +134,51 @@ def process(infer_frame, display_frame):
     return display_frame
 
 # =====================================================================
-# POSTPROCESSING — HUD drawn onto display_frame
+# POSTPROCESSING
+# Only draws what HTML cannot: bounding boxes, status word, LIVE/REC
 # =====================================================================
-DARK_NAVY = (53,  27,  15)
-DARK_BLUE = (58,  40,  20)
-GREEN     = (50,  205, 50)
-AMBER     = (0,   165, 255)
-RED       = (60,  60,  220)
-WHITE     = (255, 255, 255)
-YELLOW    = (0,   210, 240)
-GRAY      = (160, 160, 160)
+RED   = (60,  60,  220)
+GREEN = (50,  205, 50)
+AMBER = (0,   165, 255)
+WHITE = (255, 255, 255)
+GRAY  = (160, 160, 160)
 
 STATUS_COLOR = {
     "COMPLIANT": GREEN, "WARNING": AMBER,
     "ALERT": RED,       "IDLE": GRAY,
 }
 
-def _alpha_rect(frame, x1, y1, x2, y2, color, alpha=0.75):
+def _alpha_rect(frame, x1, y1, x2, y2, color, alpha=0.6):
     overlay = frame.copy()
     cv2.rectangle(overlay, (x1, y1), (x2, y2), color, -1)
     cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
-# =====================================================================
-# PHASE 3 — POSTPROCESSING
-# Only draws what the HTML dashboard cannot show:
-#   - Bounding boxes (person + PPE)
-#   - Status word overlay on video (UNSAFE / WARNING)
-#   - LIVE / CAM label + REC indicator
-# Everything else (sidebar, pills, cards, log) is in dashboard.html
-# =====================================================================
-
 def postprocess(frame):
-    from datetime import datetime
     H, W = frame.shape[:2]
 
-    # Pick primary use case status
-    primary = next(iter(_active_ucs), None)
-    p_state = _uc_states.get(primary, {}) if primary else {}
-    status  = p_state.get("status", "IDLE")
-    missing = p_state.get("missing", [])
-    color   = STATUS_COLOR.get(status, GRAY)
+    # Determine the HIGHEST SEVERITY status across ALL active use cases
+    # Priority: ALERT > WARNING > COMPLIANT > IDLE
+    SEVERITY = {"ALERT": 3, "WARNING": 2, "COMPLIANT": 1, "IDLE": 0}
 
-    # ── LIVE label (top-left) ─────────────────────────────────────
+    worst_status  = "IDLE"
+    worst_missing = []
+
+    for name in _active_ucs:
+        st = _uc_states.get(name, {})
+        s  = st.get("status", "IDLE")
+        if SEVERITY.get(s, 0) > SEVERITY.get(worst_status, 0):
+            worst_status  = s
+            worst_missing = st.get("missing", [])
+
+    color = STATUS_COLOR.get(worst_status, GRAY)
+
+    # LIVE label (top-left)
     cv2.circle(frame, (14, 14), 5, RED, -1)
     cv2.putText(frame, "LIVE  CAM 1",
                 (24, 19), cv2.FONT_HERSHEY_SIMPLEX,
                 0.42, WHITE, 1, cv2.LINE_AA)
 
-    # ── REC + timestamp (top-right) ───────────────────────────────
+    # Timestamp + REC (top-right)
     dt = datetime.now().strftime("%d/%m/%Y  %I:%M%p")
     (tw, _), _ = cv2.getTextSize(dt, cv2.FONT_HERSHEY_SIMPLEX, 0.33, 1)
     cv2.putText(frame, dt, (W - tw - 8, 14),
@@ -204,17 +186,16 @@ def postprocess(frame):
     cv2.putText(frame, "REC", (W - 38, 28),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, RED, 1, cv2.LINE_AA)
 
-    # ── Big status word on video (WARNING / UNSAFE only) ──────────
-    if status in ("ALERT", "WARNING"):
-        big = "UNSAFE" if status == "ALERT" else "WARNING"
+    # Big status word on video — reflects worst status across all active UCs
+    if worst_status in ("ALERT", "WARNING"):
+        big = "UNSAFE" if worst_status == "ALERT" else "WARNING"
         (tw, th), _ = cv2.getTextSize(big, cv2.FONT_HERSHEY_SIMPLEX, 1.1, 3)
-        # Semi-transparent backing so text is readable on any background
         _alpha_rect(frame, W - tw - 20, H//2 - th - 16,
                     W - 8, H//2 + 10, (0, 0, 0), 0.45)
         cv2.putText(frame, big, (W - tw - 14, H//2),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.1, color, 3, cv2.LINE_AA)
 
-    # ── Timecode (bottom-centre) ──────────────────────────────────
+    # Timecode (bottom-centre)
     tc = datetime.now().strftime("%H:%M:%S")
     (tw, _), _ = cv2.getTextSize(tc, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
     cv2.putText(frame, tc, ((W - tw)//2, H - 8),
@@ -223,33 +204,92 @@ def postprocess(frame):
     return frame
 
 # =====================================================================
-# CAMERA LOOP (background thread)
+# THREAD 1 — CAPTURE
+# Reads frames as fast as possible, never blocked by inference
 # =====================================================================
-def camera_loop():
-    source = CFG["camera"]["source"]
-    cap    = cv2.VideoCapture(source)
+def capture_loop():
+    global _raw_frame
+
+    cap = cv2.VideoCapture(SOURCE)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
     if not cap.isOpened():
-        print(f"[Camera] Cannot open source: {source}")
+        print(f"[Camera] Cannot open source: {SOURCE}")
         return
-    print(f"[Camera] Stream started — source: {source}")
+    print(f"[Camera] Capture started — source: {SOURCE}")
 
     while True:
-        infer_frame, display_frame, run_infer = preprocess(cap)
-        if display_frame is None:
+        ret, frame = cap.read()
+        if not ret:
             time.sleep(0.01)
             continue
-
-        if run_infer and _active_ucs:
-            display_frame = process(infer_frame, display_frame)
-
-        display_frame = postprocess(display_frame)
-
-        with _frame_lock:
-            global _latest_frame
-            _latest_frame = display_frame.copy()
+        with _raw_lock:
+            _raw_frame = frame.copy()
 
     cap.release()
 
+# =====================================================================
+# THREAD 2 — INFERENCE
+# Runs YOLO as fast as GPU allows, alternates models each frame
+# =====================================================================
+def inference_loop():
+    global _frame_counter, _inferred_frame, _use_person
+
+    print("[Inference] Thread started")
+
+    while True:
+        with _raw_lock:
+            frame = _raw_frame
+        if frame is None:
+            time.sleep(0.005)
+            continue
+
+        _frame_counter += 1
+        w, h        = CFG["camera"]["infer_size"]
+        infer_frame = cv2.resize(frame, (w, h))
+        display     = frame.copy()
+
+        if _active_ucs:
+            # Alternate: person model on odd frames, PPE model on even frames
+            display = process(infer_frame, display)
+            _use_person = not _use_person
+
+        with _infer_lock:
+            _inferred_frame = display.copy()
+        # No sleep — run as fast as GPU allows
+
+# =====================================================================
+# THREAD 3 — DISPLAY
+# Composites HUD at steady 30fps, never waits for inference
+# =====================================================================
+def display_loop():
+    global _latest_frame
+
+    print("[Display] Thread started")
+    target = 1.0 / 30   # 30fps target
+
+    while True:
+        t0 = time.time()
+
+        # Prefer inferred frame, fall back to raw if not ready
+        with _infer_lock:
+            frame = _inferred_frame
+        if frame is None:
+            with _raw_lock:
+                frame = _raw_frame
+        if frame is None:
+            time.sleep(0.01)
+            continue
+
+        display = postprocess(frame.copy())
+
+        with _frame_lock:
+            _latest_frame = display
+
+        elapsed  = time.time() - t0
+        leftover = target - elapsed
+        if leftover > 0:
+            time.sleep(leftover)
 
 # =====================================================================
 # FLASK APP
@@ -258,22 +298,26 @@ app = Flask(__name__, template_folder="templates")
 
 def _mjpeg_generator():
     quality = CFG["camera"]["mjpeg_quality"]
+    target  = 1.0 / 30
+
     while True:
+        t0 = time.time()
+
         with _frame_lock:
             frame = _latest_frame
         if frame is None:
-            time.sleep(0.033)
+            time.sleep(0.01)
             continue
 
-        # Resize to fill the dashboard video area (matches CSS flex: 1)
-        # Target 16:9 at 1280×720 — browser scales to fit the panel
         frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_LINEAR)
-
-        _, buf = cv2.imencode(".jpg", frame,
-                              [cv2.IMWRITE_JPEG_QUALITY, quality])
+        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
         yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
                + buf.tobytes() + b"\r\n")
-        time.sleep(0.033)
+
+        elapsed  = time.time() - t0
+        leftover = target - elapsed
+        if leftover > 0:
+            time.sleep(leftover)
 
 @app.route("/")
 def index():
@@ -294,6 +338,7 @@ def api_status():
             "detected":  state.get("detected", []),
             "countdown": state.get("countdown", 0),
         }
+    # Returns ALL use case states — frontend decides how many to render
     return jsonify({"states": out, "active": list(_active_ucs)})
 
 @app.route("/api/summary")
@@ -330,7 +375,7 @@ def api_silence():
 def api_simulate():
     global _simulating, _sim_end_time
     _simulating   = True
-    _sim_end_time = time.time() + 5.0   # 5-second simulation
+    _sim_end_time = time.time() + 5.0
     return jsonify({"ok": True})
 
 @app.route("/api/clear_log", methods=["POST"])
@@ -343,11 +388,12 @@ def api_clear_log():
 # ENTRY POINT
 # =====================================================================
 if __name__ == "__main__":
-    # Start camera in background
-    threading.Thread(target=camera_loop, daemon=True).start()
- 
+    threading.Thread(target=capture_loop,   daemon=True).start()  # Thread 1
+    threading.Thread(target=inference_loop, daemon=True).start()  # Thread 2
+    threading.Thread(target=display_loop,   daemon=True).start()  # Thread 3
+
     host = CFG["server"]["host"]
     port = CFG["server"]["port"]
     print(f"\n=== SIDP Dashboard → http://localhost:{port} ===\n")
-    app.run(host=host, port=port, debug=False, use_reloader=False,
-            threaded=True)
+    app.run(host=host, port=port, debug=False,
+            use_reloader=False, threaded=True)
