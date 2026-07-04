@@ -134,6 +134,16 @@
         background: #e74c3c;
         color: #fff;
       }
+      /* NEW: View History button */
+      .btn-hist {
+        border-color: #3498db;
+        color: #3498db;
+        background: transparent;
+      }
+      .btn-hist:hover {
+        background: #3498db;
+        color: #fff;
+      }
 
       /* ── MAIN LAYOUT ── */
       .main {
@@ -160,62 +170,56 @@
         letter-spacing: 0.07em;
         margin-bottom: 4px;
       }
-      .s-badge {
+      /* Per-use-case status cards (replaces single shared badge) */
+      .uc-card {
+        background: #0f1b35;
+        border: 1px solid #1e3a6a;
         border-radius: 8px;
-        padding: 9px 0;
+        padding: 10px;
+        margin-bottom: 10px;
+        transition: opacity 0.2s;
+      }
+      .uc-card.inactive {
+        opacity: 0.35;
+      }
+      .uc-card-title {
+        font-size: 10px;
+        color: #8899bb;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+      }
+      .uc-card-badge {
+        border-radius: 6px;
+        padding: 6px 0;
         text-align: center;
-        font-size: 15px;
+        font-size: 13px;
         font-weight: 800;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.03em;
         background: #2a3a5c;
         color: #aab;
-        transition: all 0.3s;
+        margin-bottom: 6px;
       }
-      .s-badge.SAFE {
+      .uc-card-badge.SAFE {
         background: #27ae60;
         color: #fff;
       }
-      .s-badge.WARNING {
+      .uc-card-badge.WARNING {
         background: #e67e22;
         color: #fff;
       }
-      .s-badge.UNSAFE {
+      .uc-card-badge.UNSAFE {
         background: #e74c3c;
         color: #fff;
       }
-
-      .s-pills {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-      }
-      .s-pill {
-        border-radius: 20px;
-        padding: 5px 10px;
-        text-align: center;
-        font-size: 11px;
-        font-weight: 600;
-        border: 1px solid #2a4a7a;
-        background: #1a2a4a;
-        color: #8899bb;
-        transition: all 0.3s;
-      }
-      .s-pill.active {
-        background: #27ae60;
-        border-color: #27ae60;
-        color: #fff;
-      }
-      .s-pill.inactive {
-        background: #333;
-        border-color: #444;
-        color: #666;
-      }
-
-      .s-missing {
-        font-size: 11px;
-        line-height: 1.8;
+      .uc-card-missing {
+        font-size: 10px;
         color: #e74c3c;
-        min-height: 20px;
+        line-height: 1.6;
+      }
+      .uc-card-missing.none {
+        color: #2ecc71;
       }
 
       /* ── VIDEO CENTER ── */
@@ -389,6 +393,85 @@
         background: #1e3a6a;
         border-radius: 4px;
       }
+
+      /* ── NEW: History Modal ── */
+      .hist-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 999;
+        align-items: center;
+        justify-content: center;
+      }
+      .hist-overlay.open {
+        display: flex;
+      }
+      .hist-modal {
+        background: #0a1228;
+        border: 1px solid #1e3a6a;
+        border-radius: 10px;
+        width: 720px;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      }
+      .hist-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid #1e3a6a;
+        flex-shrink: 0;
+      }
+      .hist-modal-header span.hist-title {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #8899bb;
+        flex-shrink: 0;
+      }
+      .hist-filter {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex: 1;
+        justify-content: center;
+      }
+      .hist-modal-close {
+        cursor: pointer;
+        color: #e74c3c;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1px solid #e74c3c;
+        border-radius: 4px;
+        padding: 3px 10px;
+      }
+      .hist-modal-close:hover {
+        background: #e74c3c;
+        color: #fff;
+      }
+      .hist-modal-body {
+        overflow-y: auto;
+        padding: 8px 16px 16px;
+        flex: 1;
+      }
+      .hist-modal-body::-webkit-scrollbar {
+        width: 4px;
+      }
+      .hist-modal-body::-webkit-scrollbar-track {
+        background: #060e1f;
+      }
+      .hist-modal-body::-webkit-scrollbar-thumb {
+        background: #1e3a6a;
+        border-radius: 4px;
+      }
     </style>
   </head>
   <body>
@@ -434,6 +517,10 @@
         Simulate Violation
       </button>
       <button class="tb-btn btn-sil" onclick="silence()">Silence Alarm</button>
+      <!-- NEW: View History button, placed beside Silence Alarm -->
+      <button class="tb-btn btn-hist" onclick="openHistory()">
+        View History
+      </button>
 
       <div class="tb-sep"></div>
       <span class="tb-clock" id="clock">—</span>
@@ -443,21 +530,9 @@
     <div class="main">
       <!-- Sidebar -->
       <div class="sidebar">
-        <div>
-          <div class="s-label">STATUS</div>
-          <div class="s-badge" id="s-badge">IDLE</div>
-        </div>
-        <div>
-          <div class="s-label">ACTIVE DETECTION</div>
-          <div class="s-pills">
-            <div class="s-pill" id="pill-ppe">PPE</div>
-            <div class="s-pill" id="pill-occupancy">occupancy</div>
-            <div class="s-pill" id="pill-no_phone">no-phone</div>
-          </div>
-        </div>
-        <div>
-          <div class="s-label">MISSING ITEMS</div>
-          <div class="s-missing" id="missing-list">—</div>
+        <div class="s-label" style="margin-bottom: 8px">USE CASE STATUS</div>
+        <div id="uc-cards">
+          <!-- Cards injected by JS — one per use case, always 3 shown -->
         </div>
       </div>
 
@@ -543,6 +618,58 @@
       </div>
     </div>
 
+    <!-- ── NEW: History Modal ── -->
+    <div class="hist-overlay" id="hist-overlay">
+      <div class="hist-modal">
+        <div class="hist-modal-header">
+          <span class="hist-title">FULL EVENT HISTORY</span>
+          <div class="hist-filter">
+            <label class="lf-check"
+              ><input
+                type="checkbox"
+                value="ppe"
+                checked
+                onchange="refreshHistory()"
+              />
+              PPE</label
+            >
+            <label class="lf-check"
+              ><input
+                type="checkbox"
+                value="occupancy"
+                checked
+                onchange="refreshHistory()"
+              />
+              Occupancy</label
+            >
+            <label class="lf-check"
+              ><input
+                type="checkbox"
+                value="no_phone"
+                checked
+                onchange="refreshHistory()"
+              />
+              No Phone</label
+            >
+          </div>
+          <span class="hist-modal-close" onclick="closeHistory()">Close</span>
+        </div>
+        <div class="hist-modal-body">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Use case</th>
+                <th>Status</th>
+                <th>Missing</th>
+              </tr>
+            </thead>
+            <tbody id="hist-log-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <script>
       // ── Clock ──────────────────────────────────────────────────────
       function tick() {
@@ -563,7 +690,15 @@
         IDLE: { cls: "", label: "IDLE" },
       };
 
-      // ── Poll live status every second ──────────────────────────────
+      // ── Use case display names ─────────────────────────────────────
+      const UC_LABELS = {
+        ppe: "PPE",
+        occupancy: "Occupancy",
+        no_phone: "No Phone",
+      };
+      const UC_ORDER = ["ppe", "occupancy", "no_phone"];
+
+      // ── Poll live status every second — renders ALL 3 use cases independently ──
       function pollStatus() {
         fetch("/api/status")
           .then((r) => r.json())
@@ -571,27 +706,27 @@
             const active = d.active || [];
             const states = d.states || {};
 
-            // Update pills
-            ["ppe", "occupancy", "no_phone"].forEach((uc) => {
-              const pill = document.getElementById("pill-" + uc);
-              if (!pill) return;
-              pill.className =
-                "s-pill " + (active.includes(uc) ? "active" : "inactive");
-            });
+            const html = UC_ORDER.map((uc) => {
+              const isActive = active.includes(uc);
+              const st = states[uc] || {};
+              const status = isActive ? st.status || "IDLE" : "IDLE";
+              const sc = SC[status] || SC.IDLE;
+              const missing =
+                isActive && st.missing && st.missing.length
+                  ? st.missing.join(", ")
+                  : null;
 
-            // Primary status = first active use case
-            const primary = active[0];
-            const ps = primary ? states[primary] || {} : {};
-            const status = ps.status || "IDLE";
-            const sc = SC[status] || SC.IDLE;
+              return `
+          <div class="uc-card ${isActive ? "" : "inactive"}">
+            <div class="uc-card-title">${UC_LABELS[uc]}</div>
+            <div class="uc-card-badge ${sc.cls}">${isActive ? sc.label : "NOT ACTIVE"}</div>
+            <div class="uc-card-missing ${missing ? "" : "none"}">
+              ${isActive ? missing || "No issues" : "—"}
+            </div>
+          </div>`;
+            }).join("");
 
-            const badge = document.getElementById("s-badge");
-            badge.textContent = sc.label;
-            badge.className = "s-badge " + sc.cls;
-
-            const ml = document.getElementById("missing-list");
-            ml.textContent =
-              ps.missing && ps.missing.length ? ps.missing.join(", ") : "—";
+            document.getElementById("uc-cards").innerHTML = html;
           });
       }
 
@@ -661,6 +796,54 @@
           body: JSON.stringify({ use_cases: ucs }),
         }).then(() => refreshData());
       }
+
+      // ── NEW: View history (with its own filter checkboxes) ──────────
+      function getSelectedHistUCs() {
+        return [...document.querySelectorAll(".hist-filter input:checked")].map(
+          (el) => el.value,
+        );
+      }
+
+      function refreshHistory() {
+        const ucs = getSelectedHistUCs();
+        const q = ucs.map((u) => "uc=" + u).join("&");
+
+        fetch("/api/history?" + q)
+          .then((r) => r.json())
+          .then((rows) => {
+            document.getElementById("hist-log-body").innerHTML = rows
+              .map(
+                (r) => `
+          <tr>
+            <td>${r.timestamp}</td>
+            <td style="color:#8899bb">${r.use_case}</td>
+            <td><span class="badge ${r.status}">${r.status}</span></td>
+            <td style="color:#e74c3c;font-size:10px">${r.missing || "—"}</td>
+          </tr>`,
+              )
+              .join("");
+          })
+          .catch((err) => {
+            console.error("Failed to load history:", err);
+            alert("Could not load event history.");
+          });
+      }
+
+      function openHistory() {
+        refreshHistory();
+        document.getElementById("hist-overlay").classList.add("open");
+      }
+
+      function closeHistory() {
+        document.getElementById("hist-overlay").classList.remove("open");
+      }
+
+      // Close modal when clicking outside the modal box
+      document
+        .getElementById("hist-overlay")
+        .addEventListener("click", function (e) {
+          if (e.target === this) closeHistory();
+        });
 
       // ── Start polling ──────────────────────────────────────────────
       pollStatus();
