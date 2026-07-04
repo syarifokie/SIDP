@@ -444,6 +444,24 @@
         flex: 1;
         justify-content: center;
       }
+      .hist-status-select {
+        background: #0f1b35;
+        border: 1px solid #2a4a7a;
+        color: #cdd6e6;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        outline: none;
+      }
+      .hist-status-select:hover {
+        border-color: #3498db;
+      }
+      .hist-status-select option {
+        background: #0f1b35;
+        color: #cdd6e6;
+      }
       .hist-modal-close {
         cursor: pointer;
         color: #e74c3c;
@@ -651,6 +669,16 @@
               />
               No Phone</label
             >
+            <select
+              class="hist-status-select"
+              id="hist-status-filter"
+              onchange="refreshHistory()"
+            >
+              <option value="ALL">All Status</option>
+              <option value="COMPLIANT">Compliant</option>
+              <option value="WARNING">Warning</option>
+              <option value="ALERT">Alert</option>
+            </select>
           </div>
           <span class="hist-modal-close" onclick="closeHistory()">Close</span>
         </div>
@@ -807,11 +835,18 @@
       function refreshHistory() {
         const ucs = getSelectedHistUCs();
         const q = ucs.map((u) => "uc=" + u).join("&");
+        const statusFilter =
+          document.getElementById("hist-status-filter").value;
 
         fetch("/api/history?" + q)
           .then((r) => r.json())
           .then((rows) => {
-            document.getElementById("hist-log-body").innerHTML = rows
+            const filtered =
+              statusFilter === "ALL"
+                ? rows
+                : rows.filter((r) => r.status === statusFilter);
+
+            document.getElementById("hist-log-body").innerHTML = filtered
               .map(
                 (r) => `
           <tr>
