@@ -22,19 +22,21 @@ def init(config):
 
 def fresh_state():
     return {
-        "status":          "IDLE",
-        "violation_start": None,
-        "staff_notified":  False,
-        "countdown":       _cfg.get("grace_period", 3.0),
-        "missing":         [],
-        "detected":        [],
+        "status":            "IDLE",
+        "violation_start":   None,
+        "staff_notified":    False,
+        "countdown":         _cfg.get("grace_period", 3.0),
+        "missing":           [],
+        "detected":          [],
+        "recording_started": False,
+        "alert_event_id":    None,
     }
 
 
-def process_frame(display_frame, infer_frame, state):
-    conf         = _cfg.get("conf_threshold", 0.40)
-    phone_names  = set(_cfg.get("phone_classes", ["cell phone"]))
-    grace        = _cfg.get("grace_period", 3.0)
+def process_frame(display_frame, infer_frame, state, run_person=True, run_ppe=True):
+    conf        = _cfg.get("conf_threshold", 0.40)
+    phone_names = set(_cfg.get("phone_classes", ["cell phone"]))
+    grace       = _cfg.get("grace_period", 3.0)
 
     sx = display_frame.shape[1] / infer_frame.shape[1]
     sy = display_frame.shape[0] / infer_frame.shape[0]
@@ -51,7 +53,7 @@ def process_frame(display_frame, infer_frame, state):
                           (int(x1*sx), int(y1*sy)), (int(x2*sx), int(y2*sy)),
                           RED, 2)
             cv2.putText(display_frame, f"PHONE DETECTED ({float(box.conf[0]):.2f})",
-                        (int(x1*sx), int(y1*sy)-10),
+                        (int(x1*sx), int(y1*sy) - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, RED, 1, cv2.LINE_AA)
 
     now = time.time()
@@ -76,15 +78,19 @@ def process_frame(display_frame, infer_frame, state):
         else:
             state["status"] = "ALERT"
             if not state["staff_notified"]:
-                insert_event("no_phone", "ALERT", ["Phone in use"], [])
+                event_id = insert_event("no_phone", "ALERT", ["Phone in use"], [])
+                state["alert_event_id"] = event_id
                 state["staff_notified"] = True
+                print(f"[NoPhone] ALERT event_id={event_id}")
 
     state["missing"]  = ["Phone detected"] if phone_found else []
-    state["detected"] = ["cell phone"] if phone_found else []
+    state["detected"] = ["cell phone"]     if phone_found else []
     return display_frame, state
 
 
 def _reset(state, grace):
-    state["violation_start"] = None
-    state["staff_notified"]  = False
-    state["countdown"]       = grace
+    state["violation_start"]  = None
+    state["staff_notified"]   = False
+    state["countdown"]        = grace
+    state["recording_started"] = False
+    state["alert_event_id"]   = None
