@@ -29,12 +29,17 @@ def init(config):
 
 def fresh_state():
     return {
-        "status":          "IDLE",
-        "violation_start": None,
-        "staff_notified":  False,
-        "countdown":       _cfg.get("grace_period", 3.0),
-        "missing":         [],
-        "detected":        [],
+        "status":             "IDLE",
+        "violation_start":    None,
+        "staff_notified":     False,
+        "countdown":          _cfg.get("grace_period", 3.0),
+        "missing":            [],
+        "detected":           [],
+        "last_person_boxes":  [],
+        "person_miss_count":  0,
+        "person_miss_limit":  5,
+        "recording_started":  False,
+        "alert_event_id":     None,   # ← add this
     }
 
 
@@ -110,8 +115,10 @@ def process_frame(display_frame, infer_frame, state):
         else:
             state["status"] = "ALERT"
             if not state["staff_notified"]:
-                insert_event("ppe", "ALERT", missing_labels, list(detected))
-                state["staff_notified"] = True
+                event_id = insert_event("ppe", "ALERT", missing_labels, list(detected))
+                state["alert_event_id"]  = event_id   # ← store it
+                state["staff_notified"]  = True
+                print(f"[PPE] ALERT event_id={event_id}")
 
     state["missing"]  = missing_labels
     state["detected"] = list(detected)
