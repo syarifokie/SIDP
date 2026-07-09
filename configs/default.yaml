@@ -1,5 +1,5 @@
 camera:
-  source: "Test.mp4" # 0 = webcam | "video.mp4" = file
+  source: 0 # 0 = webcam | "video.mp4" = file
   infer_size: [640, 480]
   process_every_n: 2 # 1 = every frame (RTX 5060), 2 = every other
   mjpeg_quality: 80
@@ -8,8 +8,8 @@ use_cases:
   ppe:
     enabled: true
     model_path: model/ppe.pt
-    person_model_path: model/yolov8s.pt
-    conf_threshold: 0.10
+    person_model_path: model/yolo26n.pt
+    conf_threshold: 0.40
     person_conf_threshold: 0.50
     grace_period: 3.0
     required_items:
@@ -29,7 +29,7 @@ use_cases:
     enabled: true
     model_path: model/yolo26n.pt
     conf_threshold: 0.40
-    max_occupancy: 5
+    max_occupancy: 2
     grace_period: 3.0
 
   no_phone:

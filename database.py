@@ -16,9 +16,15 @@ def init_db(path="data/sidp.db"):
                 use_case  TEXT,
                 status    TEXT,
                 missing   TEXT,
-                detected  TEXT
+                detected  TEXT,
+                clip_path TEXT
             )
         """)
+        # Add clip_path column if upgrading from older db without it
+        try:
+            c.execute("ALTER TABLE events ADD COLUMN clip_path TEXT")
+        except Exception:
+            pass  # column already exists
         c.commit()
 
 def _conn():
@@ -26,14 +32,22 @@ def _conn():
     conn.row_factory = sqlite3.Row
     return conn
 
-def insert_event(use_case, status, missing, detected):
+def insert_event(use_case, status, missing, detected, clip_path=None):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with _conn() as c:
-        c.execute(
-            "INSERT INTO events (timestamp,use_case,status,missing,detected) VALUES (?,?,?,?,?)",
-            (ts, use_case, status, ", ".join(missing), ", ".join(detected))
+        cursor = c.execute(
+            "INSERT INTO events (timestamp,use_case,status,missing,detected,clip_path) VALUES (?,?,?,?,?,?)",
+            (ts, use_case, status, ", ".join(missing), ", ".join(detected), clip_path)
         )
         c.commit()
+        return cursor.lastrowid   # ← same connection, guaranteed correct
+
+def update_clip_path(event_id, clip_path):
+    """Called after recording finishes to attach the clip to the event."""
+    with _conn() as c:
+        c.execute("UPDATE events SET clip_path=? WHERE id=?", (clip_path, event_id))
+        c.commit()
+
 
 def get_recent(limit=50, use_cases=None):
     with _conn() as c:

@@ -23,20 +23,22 @@ def init(config):
 
 def fresh_state():
     return {
-        "status":          "IDLE",
-        "violation_start": None,
-        "staff_notified":  False,
-        "countdown":       _cfg.get("grace_period", 3.0),
-        "missing":         [],
-        "detected":        [],
-        "count":           0,
+        "status":           "IDLE",
+        "violation_start":  None,
+        "staff_notified":   False,
+        "countdown":        _cfg.get("grace_period", 3.0),
+        "missing":          [],
+        "detected":         [],
+        "count":            0,
+        "recording_started": False,
+        "alert_event_id":   None,
     }
 
 
-def process_frame(display_frame, infer_frame, state):
-    conf      = _cfg.get("conf_threshold", 0.40)
-    max_occ   = _cfg.get("max_occupancy", 5)
-    grace     = _cfg.get("grace_period", 3.0)
+def process_frame(display_frame, infer_frame, state, run_person=True, run_ppe=True):
+    conf    = _cfg.get("conf_threshold", 0.40)
+    max_occ = _cfg.get("max_occupancy", 5)
+    grace   = _cfg.get("grace_period", 3.0)
 
     sx = display_frame.shape[1] / infer_frame.shape[1]
     sy = display_frame.shape[0] / infer_frame.shape[0]
@@ -83,9 +85,11 @@ def process_frame(display_frame, infer_frame, state):
         else:
             state["status"] = "ALERT"
             if not state["staff_notified"]:
-                insert_event("occupancy", "ALERT",
-                             [f"Over limit ({count}/{max_occ})"], [])
+                event_id = insert_event("occupancy", "ALERT",
+                                        [f"Over limit ({count}/{max_occ})"], [])
+                state["alert_event_id"] = event_id
                 state["staff_notified"] = True
+                print(f"[Occupancy] ALERT event_id={event_id}")
 
     state["count"]    = count
     state["missing"]  = [f"Over limit: {count}/{max_occ}"] if count > max_occ else []
@@ -94,6 +98,8 @@ def process_frame(display_frame, infer_frame, state):
 
 
 def _reset(state, grace):
-    state["violation_start"] = None
-    state["staff_notified"]  = False
-    state["countdown"]       = grace
+    state["violation_start"]  = None
+    state["staff_notified"]   = False
+    state["countdown"]        = grace
+    state["recording_started"] = False
+    state["alert_event_id"]   = None
