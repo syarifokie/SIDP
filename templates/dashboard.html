@@ -612,7 +612,6 @@
           <input
             type="checkbox"
             id="uc-ppe"
-            checked
             onchange="toggleUC('ppe', this.checked)"
           />
           <span class="uc-chip">PPE</span>
@@ -621,7 +620,6 @@
           <input
             type="checkbox"
             id="uc-occupancy"
-            checked
             onchange="toggleUC('occupancy', this.checked)"
           />
           <span class="uc-chip">Occupancy</span>
@@ -630,7 +628,6 @@
           <input
             type="checkbox"
             id="uc-no_phone"
-            checked
             onchange="toggleUC('no_phone', this.checked)"
           />
           <span class="uc-chip">No Phone</span>
@@ -909,7 +906,7 @@
         <tr>
           <td>${r.timestamp.slice(11, 19)}</td>
           <td style="color:#8899bb">${r.use_case}</td>
-          <td><span class="badge ${r.status}">${r.status}</span></td>
+          <td><span class="badge ${r.status}">${r.status === "ALERT" ? "UNSAFE" : r.status}</span></td>
           <td style="color:#e74c3c;font-size:10px">${r.missing || "—"}</td>
         </tr>`,
               )
@@ -972,7 +969,7 @@
           <tr class="${rowClass}" ${clickAttr} title="${hasClip ? "Click to view violation report" : ""}">
             <td>${r.timestamp}</td>
             <td style="color:#8899bb">${r.use_case}</td>
-            <td><span class="badge ${r.status}">${r.status}</span></td>
+            <td><span class="badge ${r.status}">${r.status === "ALERT" ? "UNSAFE" : r.status}</span></td>
             <td style="color:#e74c3c;font-size:10px">${r.missing || "—"}</td>
             <td>${clipBadge}</td>
           </tr>`;
