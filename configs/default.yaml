@@ -6,17 +6,15 @@ camera:
 
 use_cases:
   ppe:
-    enabled: true
+    enabled: false
     model_path: model/ppe.pt
     person_model_path: model/yolo26n.pt
-    conf_threshold: 0.40
+    conf_threshold: 0.30
     person_conf_threshold: 0.50
-    grace_period: 3.0
+    grace_period: 5
     required_items:
-      - Gloves
-      - Vest
-      - goggles
       - mask
+    alert_cooldown: 12
     labels:
       Gloves: Gloves
       Vest: Vest
@@ -26,19 +24,21 @@ use_cases:
       safety_shoe: Safety Shoes
 
   occupancy:
-    enabled: true
+    enabled: false
     model_path: model/yolo26n.pt
     conf_threshold: 0.40
-    max_occupancy: 2
-    grace_period: 3.0
+    max_occupancy: 0
+    grace_period: 50
+    alert_cooldown: 15
 
   no_phone:
-    enabled: true
+    enabled: false
     model_path: model/yolo26n.pt
     conf_threshold: 0.40
-    grace_period: 3.0
+    grace_period: 50
     phone_classes:
       - cell phone
+    alert_cooldown: 10
 
 server:
   host: 0.0.0.0
