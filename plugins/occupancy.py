@@ -1,6 +1,7 @@
 """
 Plugin: Occupancy Counting
-Exposes: init(config), process_frame(frame, infer_frame, state)
+Logic: stable frame counter before state change (prevents flickering)
+Exposes: init(config), process_frame(display_frame, infer_frame, state)
 """
 import cv2
 import time
@@ -8,9 +9,9 @@ from database import insert_event
 
 _cfg   = {}
 _model = None
-CYAN   = (255, 220, 0)
-RED    = (60,  60,  220)
 GREEN  = (50,  205, 50)
+RED    = (60,  60,  220)
+CYAN = (255, 220, 0)   # add at top
 
 
 def init(config):
@@ -18,27 +19,30 @@ def init(config):
     _cfg = config
     from ultralytics import YOLO
     _model = YOLO(config["model_path"])
-    print(f"[Occupancy] Model loaded")
+    print(f"[Occupancy] Model loaded — limit: {config.get('max_occupancy', 2)}")
 
 
 def fresh_state():
     return {
-        "status":           "IDLE",
-        "violation_start":  None,
-        "staff_notified":   False,
-        "countdown":        _cfg.get("grace_period", 3.0),
-        "missing":          [],
-        "detected":         [],
-        "count":            0,
-        "recording_started": False,
-        "alert_event_id":   None,
+        "status":              "IDLE",
+        "violation_start":     None,
+        "staff_notified":      False,
+        "countdown":           0,
+        "missing":             [],
+        "detected":            [],
+        "count":               0,
+        "last_status":         "COMPLIANT",
+        "stable_frames":       0,
+        "recording_started":   False,
+        "alert_event_id":      None,
     }
 
 
-def process_frame(display_frame, infer_frame, state, run_person=True, run_ppe=True):
-    conf    = _cfg.get("conf_threshold", 0.40)
-    max_occ = _cfg.get("max_occupancy", 5)
-    grace   = _cfg.get("grace_period", 3.0)
+def process_frame(display_frame, infer_frame, state, person_results=None, run_person=True, run_ppe=True):
+    conf          = _cfg.get("conf_threshold", 0.45)
+    max_occ       = _cfg.get("max_occupancy", 2)
+    grace         = _cfg.get("grace_period", 3.0)
+    stable_needed = _cfg.get("stable_frames", 15)  # frames before state change
 
     sx = display_frame.shape[1] / infer_frame.shape[1]
     sy = display_frame.shape[0] / infer_frame.shape[0]
@@ -46,50 +50,73 @@ def process_frame(display_frame, infer_frame, state, run_person=True, run_ppe=Tr
     results = _model(infer_frame, verbose=False, conf=conf, classes=[0])
     count   = len(results[0].boxes)
 
-    for box in results[0].boxes:
-        x1, y1, x2, y2 = box.xyxy[0]
-        color = RED if count > max_occ else GREEN
-        cv2.rectangle(display_frame,
-                      (int(x1*sx), int(y1*sy)), (int(x2*sx), int(y2*sy)),
-                      color, 2)
+    # # ── Draw bounding boxes with person numbering ─────────────────
+    # for i, box in enumerate(results[0].boxes, start=1):
+    #     x1, y1, x2, y2 = box.xyxy[0]
+    #     conf_val = float(box.conf[0])
+    #     color    = RED if count > max_occ else CYAN
+    #     x1s, y1s = int(x1*sx), int(y1*sy)
+    #     x2s, y2s = int(x2*sx), int(y2*sy)
 
-    cv2.putText(display_frame, f"Occupancy: {count}/{max_occ}",
-                (display_frame.shape[1]//2 - 60, 65),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                RED if count > max_occ else GREEN, 2, cv2.LINE_AA)
+    #     cv2.rectangle(display_frame, (x1s, y1s), (x2s, y2s), color, 1)
 
+    #     label     = f"Person {i} ({conf_val:.0%})"
+    #     (lw, lh), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    #     label_y   = max(y1s - 20, 0)
+    #     cv2.rectangle(display_frame,
+    #                   (x1s, label_y), (x1s + lw + 6, label_y + lh + 6),
+    #                   color, -1)
+    #     cv2.putText(display_frame, label,
+    #                 (x1s + 4, y1s + 16),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, 0.40, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # ── Occupancy count overlay ───────────────────────────────────
+    occ_text = f"Occupancy: {count}/{max_occ}"
+    color_occ = RED if count > max_occ else GREEN
+    cv2.putText(display_frame, occ_text,
+                (display_frame.shape[1]//2 - 70, 120),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color_occ, 2, cv2.LINE_AA)
+
+    # ── Determine raw status this frame ──────────────────────────
+    if count == 0:
+        detected_status = "IDLE"
+    elif count <= max_occ:
+        detected_status = "COMPLIANT"
+    else:
+        detected_status = "UNSAFE"
+
+    # ── Stable frame counter — prevents flickering ────────────────
+    if detected_status != state["last_status"]:
+        state["stable_frames"] += 1
+        if state["stable_frames"] >= stable_needed:
+            state["last_status"]   = detected_status
+            state["stable_frames"] = 0
+    else:
+        state["stable_frames"] = 0
+
+    confirmed_status = state["last_status"]
+# ── State machine ─────────────────────────────────────────────
     now = time.time()
 
-    if count == 0:
+    if confirmed_status == "IDLE":
         _reset(state, grace)
         state["status"] = "IDLE"
 
-    elif count <= max_occ:
+    elif confirmed_status == "COMPLIANT":
         if state["status"] != "COMPLIANT":
             _reset(state, grace)
             insert_event("occupancy", "COMPLIANT", [], [f"{count} person(s)"])
         state["status"] = "COMPLIANT"
 
     else:
-        if state["violation_start"] is None:
-            state["violation_start"] = now
-            state["staff_notified"]  = False
-            insert_event("occupancy", "WARNING",
-                         [f"Over limit ({count}/{max_occ})"], [])
-
-        elapsed = now - state["violation_start"]
-
-        if elapsed < grace:
-            state["status"]    = "WARNING"
-            state["countdown"] = round(grace - elapsed, 1)
-        else:
-            state["status"] = "ALERT"
-            if not state["staff_notified"]:
-                event_id = insert_event("occupancy", "ALERT",
-                                        [f"Over limit ({count}/{max_occ})"], [])
-                state["alert_event_id"] = event_id
-                state["staff_notified"] = True
-                print(f"[Occupancy] ALERT event_id={event_id}")
+        # Go straight to ALERT — no WARNING grace period
+        state["status"] = "ALERT"
+        if not state["staff_notified"]:
+            event_id = insert_event("occupancy", "ALERT",
+                                    [f"Over limit ({count}/{max_occ})"], [])
+            state["alert_event_id"] = event_id
+            state["staff_notified"] = True
+            print(f"[Occupancy] ALERT event_id={event_id}")
 
     state["count"]    = count
     state["missing"]  = [f"Over limit: {count}/{max_occ}"] if count > max_occ else []
