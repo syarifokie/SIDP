@@ -21,15 +21,15 @@ PRIORITY = {
 # PER-USE-CASE ALERT MESSAGES
 # =====================================================================
 ALERT_MESSAGES = {
-    "ppe":       "PPE violation detected. Ensure all protective equipment is worn.",
-    "occupancy": "Occupancy limit exceeded. Please reduce the number of people in the lab.",
-    "no_phone":  "Phone use detected. No phones allowed in this zone.",
+    "safety_mask": "Safety mask violation. Ensure mask is worn at all times.",
+    "occupancy":   "Occupancy limit exceeded. Please reduce the number of people in the lab.",
+    "proximity":   "Proximity violation. Please maintain safe distance from others.",
 }
 
 WARNING_MESSAGES = {
-    "ppe":       "Warning. Missing protective equipment. Please comply immediately.",
-    "occupancy": "Warning. Approaching occupancy limit.",
-    "no_phone":  "Warning. Phone detected. Please put it away.",
+    "safety_mask": "Warning. Safety mask not detected. Please put on your mask.",
+    "occupancy":   "Warning. Approaching occupancy limit.",
+    "proximity":   "Warning. People are too close together. Please maintain distance.",
 }
 
 # Spoken when ALL active use cases are in ALERT simultaneously
