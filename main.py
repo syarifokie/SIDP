@@ -8,6 +8,11 @@ from datetime import datetime
 from flask import Flask, Response, jsonify, render_template, request, send_file
 import database as db
 import alarm
+import signal
+import sys
+import csv
+from io import StringIO
+from flask import make_response
 
 with open("configs/default.yaml", "r") as f:
     CFG = yaml.safe_load(f)
@@ -46,6 +51,14 @@ _frame_counter  = 0;    _use_person   = True
 _recorder = None; _recorder_lock = threading.Lock()
 _recorder_frames = 0; _recorder_max = 150; _recorder_event_id = None
 
+
+def _shutdown(sig, frame):
+    print("\n[SIDP] Shutting down gracefully...")
+    _stop_recording()
+    alarm.stop()
+    sys.exit(0)
+
+
 def _start_recording(event_id):
     global _recorder, _recorder_frames, _recorder_event_id
     with _recorder_lock:
@@ -74,6 +87,14 @@ def _write_recording_frame(frame):
         db.update_clip_path(saved[0], saved[1])
         print(f"[Recorder] Auto-saved → {saved[1]} | event_id={saved[0]}")
 
+
+_person_model = None
+def init_shared_models():
+    global _person_model
+    from ultralytics import YOLO
+    _person_model = YOLO(CFG["shared"]["person_model_path"])
+    print("[Shared] Person model loaded")
+
 def _stop_recording():
     global _recorder, _recorder_event_id
     saved = None
@@ -89,6 +110,7 @@ def _stop_recording():
 # PROCESSING
 # =====================================================================
 def process(infer_frame, display_frame):
+    person_results = _person_model(infer_frame, verbose=False, conf=0.30, classes=[0])
     global _simulating, _sim_end_time
     any_alert   = False
     alert_set   = set()   # use cases currently in ALERT this frame
@@ -175,7 +197,13 @@ GRAY  = (160, 160, 160)
 BLACK = (0,   0,   0)
 
 STATUS_COLOR = {"COMPLIANT":GREEN,"WARNING":AMBER,"ALERT":RED,"IDLE":GRAY}
-UC_LABELS    = {"ppe":"PPE","occupancy":"OCCUPANCY","no_phone":"NO PHONE"}
+
+UC_LABELS = {
+    "safety_mask": "MASK",
+    "occupancy":   "OCCUPANCY",
+    "proximity":   "PROXIMITY",
+}
+
 STATUS_LABEL = {"COMPLIANT":"SAFE","WARNING":"WARNING","ALERT":"UNSAFE","IDLE":"IDLE"}
 
 def _alpha_rect(frame, x1, y1, x2, y2, color, alpha=0.6):
@@ -219,9 +247,9 @@ def postprocess(frame):
     BADGE_H = 28; BADGE_PAD = 10; GAP = 8; BADGE_Y = 35
 
     violations = [
-        n for n in ["ppe","occupancy","no_phone"]
-        if n in _active_ucs
-        and _uc_states.get(n,{}).get("status") not in ("IDLE","COMPLIANT")
+    n for n in ["safety_mask", "occupancy", "proximity"]
+    if n in _active_ucs
+    and _uc_states.get(n, {}).get("status") not in ("IDLE", "COMPLIANT")
     ]
 
     if violations:
@@ -346,6 +374,20 @@ def api_status():
 @app.route("/api/summary")
 def api_summary(): return jsonify(db.get_summary(request.args.getlist("uc") or None))
 
+@app.route("/api/export_csv")
+def export_csv():
+    rows = db.get_recent(10000)
+    si   = StringIO()
+    w    = csv.writer(si)
+    w.writerow(["ID","Timestamp","Use Case","Status","Missing","Detected","Clip"])
+    for r in rows:
+        w.writerow([r["id"],r["timestamp"],r["use_case"],
+                    r["status"],r["missing"],r["detected"],r["clip_path"] or ""])
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=sidp_log.csv"
+    output.headers["Content-Type"] = "text/csv"
+    return output
+
 @app.route("/api/events")
 def api_events(): return jsonify(db.get_recent(50,request.args.getlist("uc") or None))
 
@@ -354,13 +396,22 @@ def api_history(): return jsonify(db.get_recent(1000,request.args.getlist("uc") 
 
 @app.route("/api/activate", methods=["POST"])
 def api_activate():
-    data=request.json; name=data.get("name"); on=data.get("active",True)
-    if name not in _plugins: load_plugin(name)
+    data = request.json
+    name = data.get("name")
+    on   = data.get("active", True)
     if on:
-        _active_ucs.add(name)
-        if name not in _uc_states: _uc_states[name]=_plugins[name].fresh_state()
-    else: _active_ucs.discard(name)
-    return jsonify({"ok":True,"active":list(_active_ucs)})
+        if name not in _plugins:
+            load_plugin(name)
+        if name in _plugins:
+            _active_ucs.add(name)
+            # Always reset state on re-activation
+            _uc_states[name] = _plugins[name].fresh_state()
+    else:
+        _active_ucs.discard(name)
+        # Reset state on deactivation too
+        if name in _plugins:
+            _uc_states[name] = _plugins[name].fresh_state()
+    return jsonify({"ok": True, "active": list(_active_ucs)})
 
 @app.route("/api/silence", methods=["POST"])
 def api_silence():
@@ -387,6 +438,7 @@ def api_clip(event_id):
 # ENTRY POINT
 # =====================================================================
 if __name__ == "__main__":
+    init_shared_models()
     alarm.start()   # start speaker thread before camera
     threading.Thread(target=capture_loop,   daemon=True).start()
     threading.Thread(target=inference_loop, daemon=True).start()
@@ -394,4 +446,6 @@ if __name__ == "__main__":
 
     host=CFG["server"]["host"]; port=CFG["server"]["port"]
     print(f"\n=== SIDP Dashboard → http://localhost:{port} ===\n")
+    signal.signal(signal.SIGINT,  _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
     app.run(host=host,port=port,debug=False,use_reloader=False,threaded=True)
