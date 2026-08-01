@@ -472,21 +472,14 @@
         background: #1e3a6a;
         border-radius: 4px;
       }
-
-      /* Clickable ALERT row */
       tr.has-clip {
         cursor: pointer;
       }
       tr.has-clip:hover td {
         background: #1a2a4a;
       }
-      .clip-icon {
-        color: #e74c3c;
-        font-size: 10px;
-        margin-left: 4px;
-      }
 
-      /* ── REPORT MODAL (video player + details) ── */
+      /* ── REPORT MODAL ── */
       .report-overlay {
         display: none;
         position: fixed;
@@ -605,23 +598,21 @@
       <div class="tb-brand">
         <div class="tb-logo">L</div>
         <span class="tb-title">LAB SAFETY MONITORING</span>
-        <span class="tb-block">BLOCK 21-02-03</span>
+        <span class="tb-block">BLOCK 22-00-12</span>
       </div>
       <div class="tb-ucs">
         <label class="uc-check">
           <input
             type="checkbox"
-            id="uc-ppe"
-            checked
-            onchange="toggleUC('ppe', this.checked)"
+            id="uc-safety_mask"
+            onchange="toggleUC('safety_mask', this.checked)"
           />
-          <span class="uc-chip">PPE</span>
+          <span class="uc-chip">Safety Mask</span>
         </label>
         <label class="uc-check">
           <input
             type="checkbox"
             id="uc-occupancy"
-            checked
             onchange="toggleUC('occupancy', this.checked)"
           />
           <span class="uc-chip">Occupancy</span>
@@ -629,19 +620,18 @@
         <label class="uc-check">
           <input
             type="checkbox"
-            id="uc-no_phone"
-            checked
-            onchange="toggleUC('no_phone', this.checked)"
+            id="uc-proximity"
+            onchange="toggleUC('proximity', this.checked)"
           />
-          <span class="uc-chip">No Phone</span>
+          <span class="uc-chip">Proximity</span>
         </label>
       </div>
-      <button class="tb-btn btn-sim" onclick="simulate()">
-        Simulate Violation
-      </button>
       <button class="tb-btn btn-sil" onclick="silence()">Silence Alarm</button>
       <button class="tb-btn btn-hist" onclick="openHistory()">
         View History
+      </button>
+      <button class="tb-btn btn-hist" onclick="window.open('/api/export_csv')">
+        Export CSV
       </button>
       <div class="tb-sep"></div>
       <span class="tb-clock" id="clock">—</span>
@@ -649,13 +639,18 @@
 
     <!-- ── MAIN ── -->
     <div class="main">
+      <!-- Sidebar -->
       <div class="sidebar">
         <div class="s-label" style="margin-bottom: 8px">USE CASE STATUS</div>
         <div id="uc-cards"></div>
       </div>
+
+      <!-- Video -->
       <div class="video-center">
         <img src="/video" alt="Live camera feed" />
       </div>
+
+      <!-- Right panel -->
       <div class="right">
         <div class="cards">
           <div class="card">
@@ -675,16 +670,18 @@
             <div class="lbl">Unsafe</div>
           </div>
         </div>
+
+        <!-- Log filter -->
         <div class="log-filter">
           <span class="lf-label">FILTER LOG:</span>
           <label class="lf-check"
             ><input
               type="checkbox"
-              value="ppe"
+              value="safety_mask"
               checked
               onchange="refreshData()"
             />
-            PPE</label
+            Safety Mask</label
           >
           <label class="lf-check"
             ><input
@@ -698,17 +695,19 @@
           <label class="lf-check"
             ><input
               type="checkbox"
-              value="no_phone"
+              value="proximity"
               checked
               onchange="refreshData()"
             />
-            No Phone</label
+            Proximity</label
           >
         </div>
+
         <div class="log-header">
           <span class="log-title">RECENT EVENTS</span>
           <button class="btn-clear" onclick="clearLog()">Clear log</button>
         </div>
+
         <div class="log-wrap">
           <table>
             <thead>
@@ -716,7 +715,7 @@
                 <th>Time</th>
                 <th>Use case</th>
                 <th>Status</th>
-                <th>Missing</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody id="log-body"></tbody>
@@ -734,11 +733,11 @@
             <label class="lf-check"
               ><input
                 type="checkbox"
-                value="ppe"
+                value="safety_mask"
                 checked
                 onchange="refreshHistory()"
               />
-              PPE</label
+              Safety Mask</label
             >
             <label class="lf-check"
               ><input
@@ -752,11 +751,11 @@
             <label class="lf-check"
               ><input
                 type="checkbox"
-                value="no_phone"
+                value="proximity"
                 checked
                 onchange="refreshHistory()"
               />
-              No Phone</label
+              Proximity</label
             >
             <select
               class="hist-status-select"
@@ -777,7 +776,7 @@
                 <th>Time</th>
                 <th>Use case</th>
                 <th>Status</th>
-                <th>Missing</th>
+                <th>Details</th>
                 <th>Clip</th>
               </tr>
             </thead>
@@ -814,13 +813,9 @@
               <div class="rf-label">STATUS</div>
               <div class="rf-value rf-alert" id="rpt-status">—</div>
             </div>
-            <div class="report-field">
-              <div class="rf-label">MISSING ITEMS</div>
-              <div class="rf-value rf-alert" id="rpt-missing">—</div>
-            </div>
             <div class="report-field" style="grid-column: span 2">
-              <div class="rf-label">DETECTED ITEMS</div>
-              <div class="rf-value rf-ok" id="rpt-detected">—</div>
+              <div class="rf-label">DESCRIPTION</div>
+              <div class="rf-value rf-alert" id="rpt-missing">—</div>
             </div>
           </div>
         </div>
@@ -828,7 +823,7 @@
     </div>
 
     <script>
-      // ── Clock ────────────────────────────────────────────────────────
+      // ── Clock ──────────────────────────────────────────────────────
       function tick() {
         const n = new Date();
         document.getElementById("clock").textContent =
@@ -839,29 +834,23 @@
       tick();
       setInterval(tick, 1000);
 
+      // ── Constants ─────────────────────────────────────────────────
       const SC = {
         COMPLIANT: { cls: "SAFE", label: "SAFE" },
         WARNING: { cls: "WARNING", label: "WARNING" },
         ALERT: { cls: "UNSAFE", label: "UNSAFE" },
         IDLE: { cls: "", label: "IDLE" },
       };
-      // Display label for each raw status value coming from the backend.
-      // The backend/db still use "ALERT" internally — this only affects
-      // what text is shown to the user (tables, badges, report modal).
-      const STATUS_LABEL = {
-        COMPLIANT: "COMPLIANT",
-        WARNING: "WARNING",
-        ALERT: "UNSAFE",
-        IDLE: "IDLE",
-      };
-      const UC_LABELS = {
-        ppe: "PPE",
-        occupancy: "Occupancy",
-        no_phone: "No Phone",
-      };
-      const UC_ORDER = ["ppe", "occupancy", "no_phone"];
 
-      // ── Live status cards ────────────────────────────────────────────
+      const UC_LABELS = {
+        safety_mask: "Safety Mask",
+        occupancy: "Occupancy",
+        proximity: "Proximity",
+      };
+
+      const UC_ORDER = ["safety_mask", "occupancy", "proximity"];
+
+      // ── Sidebar status cards ───────────────────────────────────────
       function pollStatus() {
         fetch("/api/status")
           .then((r) => r.json())
@@ -889,11 +878,15 @@
           });
       }
 
-      // ── Recent events ────────────────────────────────────────────────
+      // ── Recent events ──────────────────────────────────────────────
       function getSelectedUCs() {
         return [...document.querySelectorAll(".log-filter input:checked")].map(
           (el) => el.value,
         );
+      }
+
+      function statusLabel(s) {
+        return s === "ALERT" ? "UNSAFE" : s;
       }
 
       function refreshData() {
@@ -918,8 +911,8 @@
                 (r) => `
         <tr>
           <td>${r.timestamp.slice(11, 19)}</td>
-          <td style="color:#8899bb">${r.use_case}</td>
-          <td><span class="badge ${r.status}">${STATUS_LABEL[r.status] || r.status}</span></td>
+          <td style="color:#8899bb">${UC_LABELS[r.use_case] || r.use_case}</td>
+          <td><span class="badge ${r.status}">${statusLabel(r.status)}</span></td>
           <td style="color:#e74c3c;font-size:10px">${r.missing || "—"}</td>
         </tr>`,
               )
@@ -927,7 +920,7 @@
           });
       }
 
-      // ── Toggles / actions ────────────────────────────────────────────
+      // ── Actions ───────────────────────────────────────────────────
       function toggleUC(name, active) {
         fetch("/api/activate", {
           method: "POST",
@@ -935,15 +928,17 @@
           body: JSON.stringify({ name, active }),
         });
       }
-      function simulate() {
-        fetch("/api/simulate", { method: "POST" });
-      }
       function silence() {
         fetch("/api/silence", { method: "POST" });
       }
       function clearLog() {
         const ucs = getSelectedUCs();
-        if (!confirm(`Clear log for: ${ucs.join(", ")}?`)) return;
+        if (
+          !confirm(
+            `Clear log for: ${ucs.map((u) => UC_LABELS[u] || u).join(", ")}?`,
+          )
+        )
+          return;
         fetch("/api/clear_log", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -951,7 +946,7 @@
         }).then(() => refreshData());
       }
 
-      // ── History modal ────────────────────────────────────────────────
+      // ── History modal ─────────────────────────────────────────────
       function getSelectedHistUCs() {
         return [...document.querySelectorAll(".hist-filter input:checked")].map(
           (el) => el.value,
@@ -973,19 +968,17 @@
             }
             document.getElementById("hist-log-body").innerHTML = filtered
               .map((r) => {
-                const hasClip = r.clip_path ? true : false;
-                const rowClass = hasClip ? "has-clip" : "";
-                const clickAttr = hasClip
-                  ? `onclick="openReport(${r.id})"`
-                  : "";
+                const hasClip = !!r.clip_path;
                 const clipBadge = hasClip
                   ? `<span style="color:#e74c3c;font-size:10px">▶ Play</span>`
                   : `<span style="color:#555;font-size:10px">—</span>`;
                 return `
-          <tr class="${rowClass}" ${clickAttr} title="${hasClip ? "Click to view violation report" : ""}">
+          <tr class="${hasClip ? "has-clip" : ""}"
+              ${hasClip ? `onclick="openReport(${r.id})"` : ""}
+              title="${hasClip ? "Click to view violation report" : ""}">
             <td>${r.timestamp}</td>
-            <td style="color:#8899bb">${r.use_case}</td>
-            <td><span class="badge ${r.status}">${STATUS_LABEL[r.status] || r.status}</span></td>
+            <td style="color:#8899bb">${UC_LABELS[r.use_case] || r.use_case}</td>
+            <td><span class="badge ${r.status}">${statusLabel(r.status)}</span></td>
             <td style="color:#e74c3c;font-size:10px">${r.missing || "—"}</td>
             <td>${clipBadge}</td>
           </tr>`;
@@ -994,41 +987,42 @@
           });
       }
 
+      let _histInterval = null;
+
       function openHistory() {
         refreshHistory();
         document.getElementById("hist-overlay").classList.add("open");
+        _histInterval = setInterval(refreshHistory, 5000);
       }
       function closeHistory() {
         document.getElementById("hist-overlay").classList.remove("open");
+        clearInterval(_histInterval);
+        _histInterval = null;
       }
+
       document
         .getElementById("hist-overlay")
         .addEventListener("click", function (e) {
           if (e.target === this) closeHistory();
         });
 
-      // ── Report modal (violation details + video) ──────────────────────
+      // ── Report modal ──────────────────────────────────────────────
       function openReport(eventId) {
-        // Fetch event details from history
         fetch("/api/history")
           .then((r) => r.json())
           .then((rows) => {
             const row = rows.find((r) => r.id === eventId);
             if (!row) return;
 
-            // Fill detail fields
             document.getElementById("rpt-time").textContent =
               row.timestamp || "—";
             document.getElementById("rpt-uc").textContent =
               UC_LABELS[row.use_case] || row.use_case;
             document.getElementById("rpt-status").textContent =
-              STATUS_LABEL[row.status] || row.status || "—";
+              statusLabel(row.status) || "—";
             document.getElementById("rpt-missing").textContent =
               row.missing || "None";
-            document.getElementById("rpt-detected").textContent =
-              row.detected || "None";
 
-            // Status colour
             const statusEl = document.getElementById("rpt-status");
             statusEl.className =
               "rf-value " +
@@ -1038,21 +1032,24 @@
                   ? "rf-warn"
                   : "rf-ok");
 
-            // Video player
             const vid = document.getElementById("report-video");
             const noVid = document.getElementById("report-no-video");
-
             if (row.clip_path) {
-              vid.src = `/api/clip/${eventId}`;
+              vid.src = `/api/clip/${eventId}?t=${Date.now()}`;
               vid.style.display = "block";
               noVid.style.display = "none";
+              vid.onerror = () => {
+                vid.style.display = "none";
+                noVid.style.display = "flex";
+                noVid.textContent = "Video not yet ready — try again shortly";
+              };
               vid.load();
             } else {
               vid.style.display = "none";
               noVid.style.display = "flex";
+              noVid.textContent = "No clip recorded for this event";
             }
 
-            // Open modal
             document.getElementById("report-overlay").classList.add("open");
           });
       }
@@ -1069,7 +1066,7 @@
           if (e.target === this) closeReport();
         });
 
-      // ── Start polling ────────────────────────────────────────────────
+      // ── Start polling ─────────────────────────────────────────────
       pollStatus();
       setInterval(pollStatus, 1000);
       refreshData();
