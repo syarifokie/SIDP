@@ -598,7 +598,7 @@
       <div class="tb-brand">
         <div class="tb-logo">L</div>
         <span class="tb-title">LAB SAFETY MONITORING</span>
-        <span class="tb-block">BLOCK 21-02-03</span>
+        <span class="tb-block">BLOCK 22-00-12</span>
       </div>
       <div class="tb-ucs">
         <label class="uc-check">
@@ -626,9 +626,6 @@
           <span class="uc-chip">Proximity</span>
         </label>
       </div>
-      <button class="tb-btn btn-sim" onclick="simulate()">
-        Simulate Violation
-      </button>
       <button class="tb-btn btn-sil" onclick="silence()">Silence Alarm</button>
       <button class="tb-btn btn-hist" onclick="openHistory()">
         View History
@@ -766,7 +763,6 @@
               onchange="refreshHistory()"
             >
               <option value="ALL">All Status</option>
-              <option value="COMPLIANT">Compliant</option>
               <option value="WARNING">Warning</option>
               <option value="ALERT">Unsafe</option>
             </select>
@@ -817,13 +813,9 @@
               <div class="rf-label">STATUS</div>
               <div class="rf-value rf-alert" id="rpt-status">—</div>
             </div>
-            <div class="report-field">
-              <div class="rf-label">DETAILS</div>
-              <div class="rf-value rf-alert" id="rpt-missing">—</div>
-            </div>
             <div class="report-field" style="grid-column: span 2">
-              <div class="rf-label">DETECTED</div>
-              <div class="rf-value rf-ok" id="rpt-detected">—</div>
+              <div class="rf-label">DESCRIPTION</div>
+              <div class="rf-value rf-alert" id="rpt-missing">—</div>
             </div>
           </div>
         </div>
@@ -912,7 +904,9 @@
         fetch("/api/events?" + q)
           .then((r) => r.json())
           .then((rows) => {
-            document.getElementById("log-body").innerHTML = rows
+            // Hide COMPLIANT entries from the Recent Events log
+            const filtered = rows.filter((r) => r.status !== "COMPLIANT");
+            document.getElementById("log-body").innerHTML = filtered
               .map(
                 (r) => `
         <tr>
@@ -933,9 +927,6 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, active }),
         });
-      }
-      function simulate() {
-        fetch("/api/simulate", { method: "POST" });
       }
       function silence() {
         fetch("/api/silence", { method: "POST" });
@@ -970,8 +961,11 @@
         fetch("/api/history?" + q)
           .then((r) => r.json())
           .then((rows) => {
-            const filtered =
-              status === "ALL" ? rows : rows.filter((r) => r.status === status);
+            // Always hide COMPLIANT entries from the history view
+            let filtered = rows.filter((r) => r.status !== "COMPLIANT");
+            if (status !== "ALL") {
+              filtered = filtered.filter((r) => r.status === status);
+            }
             document.getElementById("hist-log-body").innerHTML = filtered
               .map((r) => {
                 const hasClip = !!r.clip_path;
@@ -1028,8 +1022,6 @@
               statusLabel(row.status) || "—";
             document.getElementById("rpt-missing").textContent =
               row.missing || "None";
-            document.getElementById("rpt-detected").textContent =
-              row.detected || "None";
 
             const statusEl = document.getElementById("rpt-status");
             statusEl.className =
