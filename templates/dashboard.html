@@ -598,7 +598,7 @@
       <div class="tb-brand">
         <div class="tb-logo">L</div>
         <span class="tb-title">LAB SAFETY MONITORING</span>
-        <span class="tb-block">BLOCK 22-00-12</span>
+        <span class="tb-block">ISDP Lab</span>
       </div>
       <div class="tb-ucs">
         <label class="uc-check">
@@ -626,7 +626,6 @@
           <span class="uc-chip">Proximity</span>
         </label>
       </div>
-      <button class="tb-btn btn-sil" onclick="silence()">Silence Alarm</button>
       <button class="tb-btn btn-hist" onclick="openHistory()">
         View History
       </button>
@@ -927,9 +926,6 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, active }),
         });
-      }
-      function silence() {
-        fetch("/api/silence", { method: "POST" });
       }
       function clearLog() {
         const ucs = getSelectedUCs();
