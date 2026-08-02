@@ -111,6 +111,11 @@ def _stop_recording():
 # =====================================================================
 def process(infer_frame, display_frame):
     person_results = _person_model(infer_frame, verbose=False, conf=0.30, classes=[0])
+    r = person_results[0]
+
+    print(f"Preprocess : {r.speed['preprocess']:.2f} ms")
+    print(f"Inference : {r.speed['inference']:.2f} ms")
+    print(f"Postprocess: {r.speed['postprocess']:.2f} ms")
     global _simulating, _sim_end_time
     any_alert   = False
     alert_set   = set()   # use cases currently in ALERT this frame
@@ -118,14 +123,27 @@ def process(infer_frame, display_frame):
     warning_set = {n for n in _active_ucs if _uc_states.get(n,{}).get("status") == "WARNING"}
 
     # First pass — run all plugins, collect statuses
+    # First pass — run all plugins, collect statuses
     for name in list(_active_ucs):
-        plugin = _plugins.get(name); state = _uc_states.get(name)
-        if plugin is None or state is None: continue
+
+        plugin = _plugins.get(name)
+        state = _uc_states.get(name)
+
+        if plugin is None or state is None:
+            continue
+
         try:
-            display_frame, new_state = plugin.process_frame(display_frame, infer_frame, state)
+            display_frame, new_state = plugin.process_frame(
+                display_frame,
+                infer_frame,
+                state,
+                person_results=person_results
+            )
+
             _uc_states[name] = new_state
 
             status = new_state["status"]
+
             if status == "ALERT":
                 any_alert = True
                 alert_set.add(name)
@@ -135,7 +153,7 @@ def process(infer_frame, display_frame):
                     if eid:
                         _start_recording(eid)
                         _uc_states[name]["recording_started"] = True
-                        print(f"[Engine] Recording for event_id={eid}")
+                        print(f"[Engine] Recording started for event_id={eid}")
 
         except Exception as e:
             print(f"[Engine] Plugin '{name}' error: {e}")
@@ -152,37 +170,97 @@ def process(infer_frame, display_frame):
         else:
             _simulating = False
 
-    # Then pass both to notify
+    # =====================================================
+    # ALARM NOTIFICATION
+    # =====================================================
+
     now = time.time()
 
-    # Get shortest cooldown among all currently violating use cases
+    # Collect latest states AFTER plugins run
+    alert_set = {
+        n for n in _active_ucs
+        if _uc_states.get(n, {}).get("status") == "ALERT"
+    }
+
+    warning_set = {
+        n for n in _active_ucs
+        if _uc_states.get(n, {}).get("status") == "WARNING"
+    }
+
     violating = alert_set | warning_set
+
     combined_cooldown = min(
-        CFG["use_cases"].get(n, {}).get("alert_cooldown", NOTIFY_COOLDOWN)
+        CFG["use_cases"].get(n, {}).get(
+            "alert_cooldown",
+            NOTIFY_COOLDOWN
+        )
         for n in violating
     ) if violating else NOTIFY_COOLDOWN
 
 
     for name in list(_active_ucs):
-        st     = _uc_states.get(name, {})
-        status = st.get("status", "IDLE")
+
+        status = _uc_states.get(name, {}).get(
+            "status",
+            "IDLE"
+        )
+
         if status in ("ALERT", "WARNING"):
-            last     = _last_alert_notify.get(name, 0)
-            cooldown = CFG["use_cases"].get(name, {}).get("alert_cooldown", NOTIFY_COOLDOWN)
+
+            last = _last_alert_notify.get(name, 0)
+
+            cooldown = CFG["use_cases"].get(name, {}).get(
+                "alert_cooldown",
+                NOTIFY_COOLDOWN
+            )
+
             if now - last >= cooldown:
-                alarm.notify(name, status, alert_set, warning_set, combined_cooldown)
+
+                alarm.notify(
+                    name,
+                    status,
+                    alert_set,
+                    warning_set,
+                    combined_cooldown
+                )
+
                 _last_alert_notify[name] = now
+
+
         else:
+            # Tell alarm system that this violation has cleared
+            alarm.notify(
+                name,
+                status,
+                alert_set,
+                warning_set,
+                combined_cooldown
+            )
+
+            # Reset notification timer only when cleared
             _last_alert_notify.pop(name, None)
 
+
     if any_alert:
-        pass   # alarm.notify() handles speech — no global start needed
+        pass
+
     else:
         _stop_recording()
+
         for n in _active_ucs:
             if n in _uc_states:
                 _uc_states[n]["recording_started"] = False
-                _uc_states[n]["alert_event_id"]    = None
+                _uc_states[n]["alert_event_id"] = None
+
+        all_compliant = all(
+            _uc_states.get(n, {}).get("status") in ("COMPLIANT", "IDLE")
+            for n in _active_ucs
+        )
+
+        if all_compliant:
+            _last_alert_notify.clear()
+            alarm.silence()
+            alarm.clear_cooldowns()
 
     return display_frame
 
