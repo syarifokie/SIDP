@@ -7,34 +7,30 @@ camera:
 use_cases:
   safety_mask:
     enabled: false
+    # Mask detection model only
     model_path: model/ppe.pt
-    person_model_path: model/yolo26n.pt
-    conf_threshold: 0.40
-    person_conf_threshold: 0.30
+    conf_threshold: 0.30
     grace_period: 3.0
-    alert_cooldown: 12
+    alert_cooldown: 5
     mask_class: mask
+    history_window: 10
+    violation_ratio: 0.9
     labels:
       mask: Safety Mask
 
   occupancy:
     enabled: false
-    model_path: model/yolo26n.pt
-    conf_threshold: 0.45
-    max_occupancy: 1
-    grace_period: 3.0
-    alert_cooldown: 15
+    max_occupancy: 0
+    alert_cooldown: 5
     stable_frames: 15
 
   proximity:
     enabled: false
-    model_path: model/yolo26n.pt
-    conf_threshold: 0.45
     safe_distance: 1.0
     assumed_height: 1.7
     camera_fov_horizontal: 78.0
     grace_period: 3.0
-    alert_cooldown: 10
+    alert_cooldown: 5
 
 server:
   host: 0.0.0.0
