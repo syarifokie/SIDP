@@ -8,8 +8,7 @@ import time
 from database import insert_event
 
 _cfg          = {}
-_mask_model   = None
-_person_model = None
+_mask_model = None
 
 GREEN = (50,  205, 50)
 RED   = (60,  60,  220)
@@ -17,12 +16,14 @@ CYAN  = (255, 220, 0)
 
 
 def init(config):
-    global _cfg, _mask_model, _person_model
+    global _cfg, _mask_model
+
     _cfg = config
+
     from ultralytics import YOLO
-    _mask_model   = YOLO(config["model_path"])
-    _person_model = YOLO(config["person_model_path"])
-    print(f"[SafetyMask] Models loaded — filtering class: {config.get('mask_class','mask')}")
+    _mask_model = YOLO(config["model_path"])
+
+    print(f"[SafetyMask] Mask model loaded — filtering class: {config.get('mask_class','mask')}")
 
 
 def fresh_state():
@@ -38,28 +39,31 @@ def fresh_state():
         "person_miss_limit": 5,
         "recording_started": False,
         "alert_event_id":    None,
+        "mask_boxes":        [],
+        "detection_history": [],   # rolling True/False per frame
     }
 
 
-# For each detected person, check if a mask box overlaps their upper-body region
-def _has_mask_near_person(person_box, mask_boxes, threshold=0.3):
-    """
-    Check if any mask box overlaps the upper half of the person box.
-    Upper half = head/face region where mask would appear.
-    """
+def _has_mask_near_person(person_box, mask_boxes, threshold=0.15):
     px1, py1, px2, py2 = person_box
-    # Upper half of person box (head region)
-    upper_y2 = py1 + (py2 - py1) * 0.5
-    upper_box = (px1, py1, px2, upper_y2)
+    upper_y2 = py1 + (py2 - py1) * 0.7
 
     for mx1, my1, mx2, my2 in mask_boxes:
-        # Calculate overlap
+        mask_cx = (mx1 + mx2) / 2
+        mask_cy = (my1 + my2) / 2
+
+        # Check if mask centre falls within person box horizontally
+        # and within upper 70% vertically
+        if px1 <= mask_cx <= px2 and py1 <= mask_cy <= upper_y2:
+            return True
+
+        # Fallback — IoU check
         ix1 = max(px1, mx1); iy1 = max(py1, my1)
         ix2 = min(px2, mx2); iy2 = min(upper_y2, my2)
         if ix2 > ix1 and iy2 > iy1:
-            intersection = (ix2-ix1) * (iy2-iy1)
-            mask_area    = (mx2-mx1) * (my2-my1)
-            if mask_area > 0 and (intersection/mask_area) >= threshold:
+            intersection = (ix2 - ix1) * (iy2 - iy1)
+            mask_area    = (mx2 - mx1) * (my2 - my1)
+            if mask_area > 0 and (intersection / mask_area) >= threshold:
                 return True
     return False
 
@@ -73,16 +77,15 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
     sx = display_frame.shape[1] / infer_frame.shape[1]
     sy = display_frame.shape[0] / infer_frame.shape[0]
 
-    # ── Person detection ─────────────────────────────────────────
-    if run_person:
-        p_results = _person_model(infer_frame, verbose=False,
-                                   conf=person_conf, classes=[0])
-        if len(p_results[0].boxes) > 0:
-            state["last_person_boxes"] = p_results[0].boxes
+    # ── Shared Person detection ─────────────────────────────────
+    if person_results is not None:
+
+        if len(person_results[0].boxes) > 0:
+            state["last_person_boxes"] = person_results[0].boxes
             state["person_miss_count"] = 0
         else:
             state["person_miss_count"] += 1
-
+                
     person_found = state["person_miss_count"] < state["person_miss_limit"]
 
 
@@ -94,17 +97,37 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
         ppe_results = _mask_model(infer_frame, verbose=False, conf=conf)
         detected    = set()
 
-        # Collect all mask boxes first
         for box in ppe_results[0].boxes:
-            cls_name = _mask_model.names[int(box.cls[0])]
+            cls_name   = _mask_model.names[int(box.cls[0])]
+            confidence = float(box.conf[0])
             detected.add(cls_name)
-            if cls_name == mask_class:
-                mask_boxes.append(tuple(map(int, box.xyxy[0])))
 
-        state["detected"]  = list(detected)
-        state["mask_boxes"] = mask_boxes  # cache for skipped frames
+            if cls_name == mask_class:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                mask_boxes.append((x1, y1, x2, y2))
+
+                # Draw mask bounding box in bright green
+                dx1, dy1 = int(x1*sx), int(y1*sy)
+                dx2, dy2 = int(x2*sx), int(y2*sy)
+                cv2.rectangle(display_frame, (dx1, dy1), (dx2, dy2), GREEN, 2)
+                cv2.putText(display_frame,
+                            f"Mask ({confidence:.2f})",
+                            (dx1, dy1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, GREEN, 1, cv2.LINE_AA)
+
+        state["detected"]   = list(detected)
+        state["mask_boxes"] = mask_boxes
     else:
         mask_boxes = state.get("mask_boxes", [])
+
+        # Redraw cached mask boxes on skipped frames
+        for (x1, y1, x2, y2) in mask_boxes:
+            dx1, dy1 = int(x1*sx), int(y1*sy)
+            dx2, dy2 = int(x2*sx), int(y2*sy)
+            cv2.rectangle(display_frame, (dx1, dy1), (dx2, dy2), GREEN, 2)
+            cv2.putText(display_frame, "Mask",
+                        (dx1, dy1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, GREEN, 1, cv2.LINE_AA)
 
     # Check each person individually against cached mask boxes
     for box in state["last_person_boxes"]:
@@ -125,20 +148,44 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
 
     missing = [f"{violators} person(s) without mask"] if violators > 0 else []
 
-    # ── State machine ─────────────────────────────────────────────
+    # ── Majority vote — false positive filter ────────────────────
+    history_window   = _cfg.get("history_window", 10)    # frames to look back
+    violation_ratio  = _cfg.get("violation_ratio", 0.7)  # 70% must be violations
+
+    # Append this frame's result (True = compliant, False = violation)
+    state["detection_history"].append(violators == 0)
+
+    # Keep only the last N frames
+    if len(state["detection_history"]) > history_window:
+        state["detection_history"].pop(0)
+
+    # Need full window before making a decision
+    if len(state["detection_history"]) < history_window:
+        state["status"]  = "IDLE"   # accumulating — hold neutral
+        state["missing"] = []
+        return display_frame, state
+
+    # Calculate ratio of compliant frames in window
+    compliant_ratio    = sum(state["detection_history"]) / len(state["detection_history"])
+    confirmed_violation = compliant_ratio < (1 - violation_ratio)
+    # confirmed_violation = True means 70%+ frames showed violation
+
+    # ── State machine — driven by majority vote ───────────────────
     now = time.time()
 
     if not person_found:
         _reset(state, grace)
         state["status"] = "IDLE"
 
-    elif violators == 0:
+    elif not confirmed_violation:
+        # Majority says compliant — reset
         if state["status"] != "COMPLIANT":
             _reset(state, grace)
             insert_event("safety_mask", "COMPLIANT", [], state.get("detected", []))
         state["status"] = "COMPLIANT"
 
     else:
+        # Majority confirmed violation — proceed to WARNING/UNSAFE
         if state["violation_start"] is None:
             state["violation_start"] = now
             state["staff_notified"]  = False
