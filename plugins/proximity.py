@@ -9,18 +9,17 @@ import numpy as np
 from database import insert_event
 
 _cfg   = {}
-_model = None
 GREEN  = (50,  205, 50)
 RED    = (60,  60,  220)
 YELLOW = (0,   200, 255)
 WHITE = (255, 255, 255)   # add at top
 
 def init(config):
-    global _cfg, _model
+    global _cfg
+
     _cfg = config
-    from ultralytics import YOLO
-    _model = YOLO(config["model_path"])
-    print(f"[Proximity] Model loaded — safe distance: {config.get('safe_distance', 1.0)}m")
+
+    print(f"[Proximity] Ready — safe distance: {config.get('safe_distance', 1.0)}m")
 
 
 def fresh_state():
@@ -37,8 +36,7 @@ def fresh_state():
     }
 
 
-def process_frame(display_frame, infer_frame, state, person_results=None, run_person=True, run_ppe=True):
-    conf           = _cfg.get("conf_threshold", 0.45)
+def process_frame(display_frame, infer_frame, state, person_results=None):
     safe_distance  = _cfg.get("safe_distance", 1.0)       # metres
     assumed_height = _cfg.get("assumed_height", 1.7)      # metres
     fov_h          = _cfg.get("camera_fov_horizontal", 78.0)  # degrees
@@ -51,7 +49,10 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
     frame_w   = infer_frame.shape[1]
     focal_px  = (frame_w / 2) / np.tan(np.radians(fov_h / 2))
 
-    results = _model(infer_frame, verbose=False, conf=conf, classes=[0])
+    if person_results is None:
+        return display_frame, state
+
+    results = person_results
 
     people = []   # (lateral, depth)
     boxes  = []   # (x1, y1, x2, y2) in infer coords
@@ -75,7 +76,7 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
             if dist < safe_distance:
                 violations.append((i, j, dist))
 
-    # # ── Draw bounding boxes ───────────────────────────────────────
+    # # # ── Draw bounding boxes ───────────────────────────────────────
     # violating_indices = {idx for v in violations for idx in v[:2]}
 
     # for idx, box in enumerate(boxes):
