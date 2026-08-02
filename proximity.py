@@ -13,6 +13,8 @@ import os
 import csv
 from datetime import datetime
 import numpy as np
+import pyttsx3
+import threading
 
 # =====================================================================
 # CONFIG  (previously passed in via init(config) from the host app)
@@ -25,6 +27,8 @@ CONFIG = {
     "camera_fov_horizontal": 78.0,     # degrees, adjust to your webcam's FOV
     "grace_period": 3.0,               # seconds before WARNING escalates to ALERT
 }
+
+ALERT_COOLDOWN = 6  # seconds between repeated voice alerts
 
 LOG_DIR = "data"
 LOG_FILE = os.path.join(LOG_DIR, "proximity_log.csv")
@@ -39,6 +43,27 @@ YELLOW = (0,   200, 255)
 WHITE  = (255, 255, 255)
 
 _model = None
+
+
+# =====================================================================
+# BACKGROUND VOICE ENGINE
+# =====================================================================
+def _speak_worker(text):
+    try:
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 170)
+        engine.say(text)
+        engine.runAndWait()
+    except:
+        pass
+
+
+def trigger_voice_alert(text):
+    threading.Thread(
+        target=_speak_worker,
+        args=(text,),
+        daemon=True
+    ).start()
 
 
 # =====================================================================
@@ -110,25 +135,6 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
             if dist < safe_distance:
                 violations.append((i, j, dist))
 
-    violating_indices = {idx for v in violations for idx in v[:2]}
-    for idx, box in enumerate(boxes):
-        x1, y1, x2, y2 = box
-        color = RED if idx in violating_indices else WHITE
-        x1s, y1s = int(x1 * sx), int(y1 * sy)
-        x2s, y2s = int(x2 * sx), int(y2 * sy)
-        cv2.rectangle(display_frame, (x1s, y1s), (x2s, y2s), color, 1)
-        cv2.putText(display_frame, f"Person {idx+1}", (x1s, y1s + 32),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.40, color, 1, cv2.LINE_AA)
-
-    for i, j, dist in violations:
-        b1, b2  = boxes[i], boxes[j]
-        centre1 = (int((b1[0] + b1[2]) / 2 * sx), int(b1[3] * sy))
-        centre2 = (int((b2[0] + b2[2]) / 2 * sx), int(b2[3] * sy))
-        cv2.line(display_frame, centre1, centre2, RED, 2)
-        mid = ((centre1[0] + centre2[0]) // 2, (centre1[1] + centre2[1]) // 2)
-        cv2.putText(display_frame, f"{dist:.2f}m", mid,
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, YELLOW, 1, cv2.LINE_AA)
-
     now     = time.time()
     missing = [f"{len(violations)} proximity violation(s)"] if violations else []
 
@@ -159,6 +165,32 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
                 state["alert_event_id"] = event_id
                 state["staff_notified"] = True
                 print(f"[Proximity] ALERT event_id={event_id}")
+
+    # ── Draw boxes/lines coloured by overall status ────────────────
+    status_color_map = {
+        "IDLE":      WHITE,
+        "COMPLIANT": GREEN,
+        "WARNING":   YELLOW,
+        "ALERT":     RED,
+    }
+    box_color = status_color_map.get(state["status"], WHITE)
+
+    for idx, box in enumerate(boxes):
+        x1, y1, x2, y2 = box
+        x1s, y1s = int(x1 * sx), int(y1 * sy)
+        x2s, y2s = int(x2 * sx), int(y2 * sy)
+        cv2.rectangle(display_frame, (x1s, y1s), (x2s, y2s), box_color, 2)
+        cv2.putText(display_frame, f"Person {idx+1}", (x1s, y1s + 32),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.40, box_color, 1, cv2.LINE_AA)
+
+    for i, j, dist in violations:
+        b1, b2  = boxes[i], boxes[j]
+        centre1 = (int((b1[0] + b1[2]) / 2 * sx), int(b1[3] * sy))
+        centre2 = (int((b2[0] + b2[2]) / 2 * sx), int(b2[3] * sy))
+        cv2.line(display_frame, centre1, centre2, box_color, 2)
+        mid = ((centre1[0] + centre2[0]) // 2, (centre1[1] + centre2[1]) // 2)
+        cv2.putText(display_frame, f"{dist:.2f}m", mid,
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, YELLOW, 1, cv2.LINE_AA)
 
     state["missing"]    = missing
     state["detected"]   = [f"{len(people)} person(s)"]
@@ -214,6 +246,8 @@ def main():
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(window_name, 1024, 768)
 
+    last_alert_time = 0
+
     print("Proximity monitor running. Press Q to quit.")
 
     while True:
@@ -228,6 +262,21 @@ def main():
 
         display_frame, state = process_frame(display_frame, infer_frame, state)
         draw_status_bar(display_frame, state)
+
+        # ------------------------------------------------------------
+        # Voice Alerts (does not affect state machine / status logic)
+        # ------------------------------------------------------------
+        current_time = time.time()
+
+        if current_time - last_alert_time > ALERT_COOLDOWN:
+
+            if state["status"] == "WARNING":
+                trigger_voice_alert("Warning. Please maintain safe distance.")
+                last_alert_time = current_time
+
+            elif state["status"] == "ALERT":
+                trigger_voice_alert("Critical safety breach. Social distancing violated.")
+                last_alert_time = current_time
 
         cv2.imshow(window_name, display_frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
