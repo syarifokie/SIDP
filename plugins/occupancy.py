@@ -8,18 +8,17 @@ import time
 from database import insert_event
 
 _cfg   = {}
-_model = None
 GREEN  = (50,  205, 50)
 RED    = (60,  60,  220)
 CYAN = (255, 220, 0)   # add at top
 
 
 def init(config):
-    global _cfg, _model
+    global _cfg
+
     _cfg = config
-    from ultralytics import YOLO
-    _model = YOLO(config["model_path"])
-    print(f"[Occupancy] Model loaded — limit: {config.get('max_occupancy', 2)}")
+
+    print(f"[Occupancy] Ready — limit: {config.get('max_occupancy', 2)}")
 
 
 def fresh_state():
@@ -38,8 +37,7 @@ def fresh_state():
     }
 
 
-def process_frame(display_frame, infer_frame, state, person_results=None, run_person=True, run_ppe=True):
-    conf          = _cfg.get("conf_threshold", 0.45)
+def process_frame(display_frame, infer_frame, state, person_results=None):
     max_occ       = _cfg.get("max_occupancy", 2)
     grace         = _cfg.get("grace_period", 3.0)
     stable_needed = _cfg.get("stable_frames", 15)  # frames before state change
@@ -47,8 +45,11 @@ def process_frame(display_frame, infer_frame, state, person_results=None, run_pe
     sx = display_frame.shape[1] / infer_frame.shape[1]
     sy = display_frame.shape[0] / infer_frame.shape[0]
 
-    results = _model(infer_frame, verbose=False, conf=conf, classes=[0])
-    count   = len(results[0].boxes)
+    if person_results is None:
+        return display_frame, state
+
+    results = person_results
+    count = len(results[0].boxes)
 
     # # ── Draw bounding boxes with person numbering ─────────────────
     # for i, box in enumerate(results[0].boxes, start=1):
