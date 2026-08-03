@@ -13,6 +13,7 @@ import sys
 import csv
 from io import StringIO
 from flask import make_response
+import torch
 
 with open("configs/default.yaml", "r") as f:
     CFG = yaml.safe_load(f)
@@ -89,11 +90,30 @@ def _write_recording_frame(frame):
 
 
 _person_model = None
+
 def init_shared_models():
     global _person_model
+
     from ultralytics import YOLO
-    _person_model = YOLO(CFG["shared"]["person_model_path"])
-    print("[Shared] Person model loaded")
+    import torch
+
+    # Check CUDA availability
+    if torch.cuda.is_available():
+        device = "cuda:0"
+        print("[GPU] CUDA available")
+        print("[GPU] Device:", torch.cuda.get_device_name(0))
+    else:
+        device = "cpu"
+        print("[GPU] CUDA not available, using CPU")
+
+    _person_model = YOLO(
+        CFG["shared"]["person_model_path"]
+    )
+
+    # Move model to GPU
+    _person_model.to(device)
+
+    print(f"[Shared] Person model loaded on {device}")
 
 def _stop_recording():
     global _recorder, _recorder_event_id
@@ -110,7 +130,14 @@ def _stop_recording():
 # PROCESSING
 # =====================================================================
 def process(infer_frame, display_frame):
-    person_results = _person_model(infer_frame, verbose=False, conf=0.30, classes=[0])
+    person_results = _person_model(
+    infer_frame,
+    verbose=False,
+    conf=0.30,
+    classes=[0],
+    device=0
+    )
+    print(torch.cuda.memory_allocated()/1024**2, "MB GPU memory used")
     r = person_results[0]
 
     print(f"Preprocess : {r.speed['preprocess']:.2f} ms")
@@ -175,6 +202,7 @@ def process(infer_frame, display_frame):
     # =====================================================
 
     now = time.time()
+    print("CURRENT ALERTS:", alert_set)
 
     # Collect latest states AFTER plugins run
     alert_set = {
