@@ -147,41 +147,32 @@ def notify(
 
     if status not in ("WARNING", "ALERT"):
 
-
         _last_spoken.pop(use_case, None)
 
 
-
-        #
-        # One violation remains
-        #
+        # One violation remains after resolving another violation
         if len(active_alerts) == 1:
-
-
-            _last_spoken.pop(
-                "_combined_alert",
-                None
-            )
-
-
-            _drain_queue()
-
 
             remaining = next(iter(active_alerts))
 
+            # Only switch from combined alert once
+            if "_combined_alert" in _last_spoken:
 
-            msg = ALERT_MESSAGES.get(
-                remaining
-            )
+                _drain_queue()
 
+                msg = ALERT_MESSAGES.get(remaining)
 
-            if msg:
+                if msg:
+                    _enqueue(
+                        PRIORITY["ALERT"],
+                        msg
+                    )
 
-                _enqueue(
-                    PRIORITY["ALERT"],
-                    msg
+                # Remove combined state only after switching
+                _last_spoken.pop(
+                    "_combined_alert",
+                    None
                 )
-
 
                 _last_spoken[remaining] = (
                     "ALERT",
@@ -189,12 +180,8 @@ def notify(
                 )
 
 
-
-        #
         # No violation remains
-        #
         elif len(active_alerts) == 0:
-
 
             _drain_queue()
 
@@ -203,7 +190,6 @@ def notify(
             print(
                 "[Alarm] System compliant"
             )
-
 
 
         return
@@ -357,9 +343,12 @@ def is_active():
 
 
 
-def _enqueue(priority, text):
+def _enqueue(priority, text): #latest alert message replaces old pending messages
 
     global _seq
+
+    # Remove outdated pending alerts
+    _drain_queue()
 
     _seq += 1
 
@@ -370,7 +359,6 @@ def _enqueue(priority, text):
             text
         )
     )
-
 
 
 def _drain_queue():
