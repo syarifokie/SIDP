@@ -16,19 +16,12 @@ CYAN  = (255, 220, 0)
 
 
 def init(config):
-    global _cfg, _mask_model
-
-    _cfg = config
+    global _mask_model
 
     from ultralytics import YOLO
     import torch
 
-    if torch.cuda.is_available():
-        device = "cuda:0"
-        print("[GPU] Mask model using CUDA")
-    else:
-        device = "cpu"
-        print("[GPU] Mask model using CPU")
+    device = config.get("device", "cpu")
 
     _mask_model = YOLO(
         config["model_path"]
@@ -36,7 +29,7 @@ def init(config):
 
     _mask_model.to(device)
 
-    print(f"[SafetyMask] Model loaded on {device}")
+    print(f"[Safety Mask] Model loaded on {device}")
 
 
 def fresh_state():
