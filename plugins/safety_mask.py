@@ -21,9 +21,22 @@ def init(config):
     _cfg = config
 
     from ultralytics import YOLO
-    _mask_model = YOLO(config["model_path"])
+    import torch
 
-    print(f"[SafetyMask] Mask model loaded — filtering class: {config.get('mask_class','mask')}")
+    if torch.cuda.is_available():
+        device = "cuda:0"
+        print("[GPU] Mask model using CUDA")
+    else:
+        device = "cpu"
+        print("[GPU] Mask model using CPU")
+
+    _mask_model = YOLO(
+        config["model_path"]
+    )
+
+    _mask_model.to(device)
+
+    print(f"[SafetyMask] Model loaded on {device}")
 
 
 def fresh_state():
