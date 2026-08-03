@@ -97,23 +97,114 @@ def init_shared_models():
     from ultralytics import YOLO
     import torch
 
-    # Check CUDA availability
-    if torch.cuda.is_available():
-        device = "cuda:0"
-        print("[GPU] CUDA available")
-        print("[GPU] Device:", torch.cuda.get_device_name(0))
+
+    # =====================================================
+    # DEVICE SELECTION FROM CONFIG
+    # =====================================================
+
+    requested_device = CFG.get(
+        "hardware",
+        {}
+    ).get(
+        "device",
+        "cpu"
+    )
+
+
+    # Check if GPU requested and available
+    if requested_device.startswith("cuda"):
+
+        if torch.cuda.is_available():
+
+            device = "cuda:0"
+
+            print("[GPU] CUDA enabled")
+            print(
+                "[GPU] Device:",
+                torch.cuda.get_device_name(0)
+            )
+
+        else:
+
+            device = "cpu"
+
+            print(
+                "[GPU] CUDA requested but unavailable"
+            )
+            print(
+                "[CPU] Falling back to CPU"
+            )
+
     else:
+
         device = "cpu"
-        print("[GPU] CUDA not available, using CPU")
+
+        print(
+            "[CPU] CPU inference selected"
+        )
+
+
+    # =====================================================
+    # LOAD YOLO MODEL
+    # =====================================================
 
     _person_model = YOLO(
         CFG["shared"]["person_model_path"]
     )
 
-    # Move model to GPU
+
+    # Move model
     _person_model.to(device)
 
-    print(f"[Shared] Person model loaded on {device}")
+
+    print(
+        f"[Shared] Person model loaded on {device}"
+    )
+
+
+    # =====================================================
+    # OPTIONAL GPU MEMORY CHECK
+    # =====================================================
+
+    if device.startswith("cuda"):
+
+        memory = (
+            torch.cuda.memory_allocated()
+            /
+            1024**2
+        )
+
+        print(
+            f"[GPU] Memory allocated: {memory:.2f} MB"
+        )
+
+
+    # =====================================================
+    # MODEL WARM-UP
+    # Prevent first-frame CUDA lag
+    # =====================================================
+    dummy = torch.zeros(
+        1,
+        3,
+        CFG["camera"]["infer_size"][1],
+        CFG["camera"]["infer_size"][0]
+    ).to(device)
+
+
+    print("[GPU] Warming up model...")
+
+    _person_model(
+        dummy,
+        verbose=False
+    )
+
+    print("[GPU] Warm-up completed")
+
+
+    # Optional: show GPU memory usage
+    if device.startswith("cuda"):
+        memory = torch.cuda.memory_allocated() / 1024**2
+        print(f"[GPU] Memory used: {memory:.2f} MB")
 
 def _stop_recording():
     global _recorder, _recorder_event_id
