@@ -204,16 +204,6 @@ configs/default.yaml
 
 Verify that the configured model path exists and that the required YOLO model weights are available.
 
-## Project Demonstration
-
-A demonstration video is available on YouTube and shows the integrated operation of the laboratory safety monitoring system, including face-mask, occupancy, proximity, and alarm functions.
-
-**Demonstration:** `<YOUR-YOUTUBE-LINK>`
-
-## Project Repository
-
-**GitHub:** `<YOUR-GITHUB-REPOSITORY-LINK>`
-
 ## Project Status
 
 The system integrates computer vision, safety decision logic, audio alarms, event storage, and a web-based dashboard into a single laboratory safety monitoring platform.
