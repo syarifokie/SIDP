@@ -224,7 +224,7 @@ def process(infer_frame, display_frame):
     person_results = _person_model(
     infer_frame,
     verbose=False,
-    conf=0.30,
+    conf=0.70,
     classes=[0],
     device=0
     )
